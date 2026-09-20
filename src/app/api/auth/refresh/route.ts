@@ -21,9 +21,9 @@ export async function POST() {
 
     await connectToDatabase();
     const user = await User.findById(decoded.userId).select('+password');
-    if (!user || !user.isActive || user.verificationStatus === 'SUSPENDED') {
+    if (!user || !user.isActive || user.verificationStatus !== 'VERIFIED') {
       await clearAuthCookies();
-      return NextResponse.json({ success: false, message: 'Account is inactive or suspended.' }, { status: 403 });
+      return NextResponse.json({ success: false, message: 'This account is not verified for operational access.' }, { status: 403 });
     }
 
     const accessToken = await signAccessToken({
@@ -31,6 +31,7 @@ export async function POST() {
       email: user.email,
       role: user.role,
       name: user.name,
+      verificationStatus: user.verificationStatus,
     });
     const rotatedRefreshToken = await signRefreshToken({ userId: user._id.toString() });
     await setAuthCookies(accessToken, rotatedRefreshToken);

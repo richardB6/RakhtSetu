@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "test": "tsx --test tests/*.test.ts",
+    "test:security:e2e": "tsx --test tests/security-http.e2e.ts",
     "lint": "eslint",
     "typecheck": "tsc --noEmit"
   },

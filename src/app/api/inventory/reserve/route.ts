@@ -18,6 +18,6 @@ export const POST = withAuth(async (req, context) => {
     const reservation = await reserveAcceptedMatch(match._id.toString(), { userId: context.user.userId, userName: context.user.name });
     return NextResponse.json({ success: true, data: reservation }, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ success: false, message: error.message }, { status: /available|reserved|accepted/i.test(error.message) ? 409 : 500 });
+    return NextResponse.json({ success: false, message: error.message }, { status: /available|reserved|accepted|changed/i.test(error.message) ? 409 : 500 });
   }
 }, { roles: ['BLOOD_BANK', 'ADMIN'] });

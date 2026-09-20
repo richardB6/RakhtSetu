@@ -5,8 +5,6 @@ import { Hospital } from '@/models/Hospital';
 import { BloodBank } from '@/models/BloodBank';
 import { Donor } from '@/models/Donor';
 import { hashPassword } from '@/lib/auth/password';
-import { signAccessToken, signRefreshToken } from '@/lib/auth/jwt';
-import { setAuthCookies } from '@/lib/auth/cookies';
 import {
   registerSchema,
   hospitalProfileSchema,
@@ -109,20 +107,6 @@ export async function POST(req: NextRequest) {
       description: `Pending verification created for ${role}`,
       newState: { status: 'PENDING', entityType: role },
     });
-
-    // Sign tokens
-    const accessToken = await signAccessToken({
-      userId: user._id.toString(),
-      email: user.email,
-      role: user.role,
-      name: user.name,
-    });
-    const refreshToken = await signRefreshToken({
-      userId: user._id.toString(),
-    });
-
-    // Set cookies
-    await setAuthCookies(accessToken, refreshToken);
 
     return NextResponse.json(
       {

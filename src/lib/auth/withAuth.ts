@@ -53,10 +53,10 @@ export function withAuth(
       if (
         !currentUser ||
         !currentUser.isActive ||
-        currentUser.verificationStatus === 'SUSPENDED'
+        currentUser.verificationStatus !== 'VERIFIED'
       ) {
         return NextResponse.json(
-          { success: false, message: 'Account is inactive or suspended.' },
+          { success: false, message: 'Account verification is required.' },
           { status: 403 }
         );
       }
@@ -82,6 +82,7 @@ export function withAuth(
           email: currentUser.email,
           name: currentUser.name,
           role: currentUser.role,
+          verificationStatus: currentUser.verificationStatus,
         },
         params: resolvedParams,
       });

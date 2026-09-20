@@ -24,9 +24,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!user.isActive) {
+    if (!user.isActive || user.verificationStatus !== 'VERIFIED') {
       return NextResponse.json(
-        { success: false, message: 'This account has been deactivated.' },
+        { success: false, message: 'This account is not verified for operational access.' },
         { status: 403 }
       );
     }
@@ -41,6 +41,7 @@ export async function POST(req: NextRequest) {
       email: user.email,
       role: user.role,
       name: user.name,
+      verificationStatus: user.verificationStatus,
     });
     const refreshToken = await signRefreshToken({
       userId: user._id.toString(),

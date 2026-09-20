@@ -18,14 +18,30 @@ async function getRequest(id: string) {
   return request;
 }
 
-export async function selectAcceptedMatch(requestId: string, matchId: string, userId: string) {
+export async function selectAcceptedMatch(requestId: string, matchId: string, userId: string, isAdmin = false) {
   await connectToDatabase();
-  const request = await getRequest(requestId);
+  let request = await getRequest(requestId);
+  if (!isAdmin && request.createdBy.toString() !== userId) {
+    throw new Error('You do not have access to this request');
+  }
   if (!['RESPONSES_RECEIVED', 'RESOURCE_SELECTED'].includes(request.status)) {
     throw new Error(`Cannot select a resource while request is ${request.status}`);
   }
   const match = await Match.findOne({ _id: matchId, emergencyRequestId: request._id, status: 'ACCEPTED' });
   if (!match) throw new Error('Only an accepted match for this request can be selected');
+  const claimedRequest = await EmergencyRequest.findOneAndUpdate(
+    {
+      _id: request._id,
+      status: { $in: ['RESPONSES_RECEIVED', 'RESOURCE_SELECTED'] },
+      selectedMatchId: { $exists: false },
+    },
+    { $set: { selectedMatchId: match._id, status: 'RESOURCE_SELECTED' } },
+    { returnDocument: 'after' }
+  );
+  if (!claimedRequest) {
+    throw new Error('Another resource has already been selected for this request');
+  }
+  request = claimedRequest;
   const cancelledMatches = await Match.find(
     { emergencyRequestId: request._id, _id: { $ne: match._id }, status: { $in: ['PENDING', 'NOTIFIED', 'ACCEPTED'] } }
   ).select('_id');
@@ -34,9 +50,6 @@ export async function selectAcceptedMatch(requestId: string, matchId: string, us
     { $set: { status: 'CANCELLED' } }
   );
   await Promise.all(cancelledMatches.map((candidate) => releaseMatchReservation(candidate._id.toString(), 'RESOURCE_NOT_SELECTED', { userId, userName: userId })));
-  request.selectedMatchId = match._id;
-  await request.save();
-  await updateEmergencyStatus(request._id.toString(), 'RESOURCE_SELECTED', userId);
   await updateEmergencyStatus(request._id.toString(), 'RESERVED', userId);
   match.status = 'RESERVED';
   await match.save();
@@ -72,9 +85,12 @@ export async function advanceResponseWorkflow(requestId: string, status: Request
   return result;
 }
 
-export async function escalateTimedOutRequest(requestId: string, userId: string, force = false) {
+export async function escalateTimedOutRequest(requestId: string, userId: string, force = false, isAdmin = false) {
   await connectToDatabase();
   const request = await getRequest(requestId);
+  if (!isAdmin && request.createdBy.toString() !== userId) {
+    throw new Error('You do not have access to this request');
+  }
   if (!force && (!request.responseDeadline || request.responseDeadline > new Date())) {
     throw new Error('Response timeout has not elapsed');
   }
@@ -111,6 +127,8 @@ export async function escalateTimedOutRequest(requestId: string, userId: string,
     description: `Escalated request to level ${level}; radius ${previousRadius} -> ${newRadius} km.`,
     newState: { status: request.status, escalationLevel: level, searchRadiusKm: newRadius },
   });
-  const matches = newRadius > previousRadius ? await runMatchingEngine(request._id.toString(), userId) : [];
+  const matches = newRadius > previousRadius
+    ? await runMatchingEngine(request._id.toString(), userId, isAdmin)
+    : [];
   return { escalation, request: await EmergencyRequest.findById(request._id), matches };
 }

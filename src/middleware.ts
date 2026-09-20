@@ -51,6 +51,10 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL('/unauthorized', request.url));
     }
 
+    if (user.verificationStatus !== 'VERIFIED') {
+      return NextResponse.redirect(new URL('/unauthorized', request.url));
+    }
+
     // Forward identity downstream
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set('x-user-id', user.userId);

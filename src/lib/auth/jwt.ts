@@ -11,6 +11,7 @@ export interface UserTokenPayload extends JWTPayload {
   email: string;
   role: UserRole;
   name: string;
+  verificationStatus: 'PENDING' | 'VERIFIED' | 'REJECTED' | 'SUSPENDED';
 }
 
 export async function signAccessToken(

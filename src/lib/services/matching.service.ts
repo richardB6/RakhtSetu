@@ -131,7 +131,7 @@ export function calculateMatchScore(params: CalculateMatchScoreParams) {
 /** Operational scoring alias kept explicit to distinguish it from clinical decisions. */
 export const calculateOperationalScore = calculateMatchScore;
 
-export async function runMatchingEngine(emergencyRequestId: string, userId: string) {
+export async function runMatchingEngine(emergencyRequestId: string, userId: string, isAdmin = false) {
   await connectToDatabase();
   
   const request = await EmergencyRequest.findOne(
@@ -141,6 +141,9 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
   );
   if (!request) {
     throw new Error('Emergency request not found');
+  }
+  if (!isAdmin && request.createdBy.toString() !== userId) {
+    throw new Error('You do not have access to this request');
   }
 
   // Do not start a search for malformed or already terminal requests. This is
@@ -369,7 +372,7 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
   return createdMatches;
 }
 
-export async function getMatchesForRequest(emergencyRequestId: string) {
+export async function getMatchesForRequest(emergencyRequestId: string, userId?: string, role?: string) {
   await connectToDatabase();
   const request = await EmergencyRequest.findOne(
     mongoose.Types.ObjectId.isValid(emergencyRequestId)
@@ -378,16 +381,19 @@ export async function getMatchesForRequest(emergencyRequestId: string) {
   ).select('_id');
   if (!request) throw new Error('Emergency request not found');
 
-  const matches = await Match.find({ emergencyRequestId: request._id })
+  const matchQuery: Record<string, unknown> = { emergencyRequestId: request._id };
+  if (role === 'BLOOD_BANK' && userId) matchQuery.resourceUserId = userId;
+  const matches = await Match.find(matchQuery)
     .sort({ rank: 1, _id: 1 })
-    .populate('resourceUserId');
+    .select('_id emergencyRequestId resourceType resourceId resourceUserId status rank score reasons compatibilityType notifiedAt respondedAt createdAt updatedAt')
+    .populate('resourceUserId', '_id name role verificationStatus');
 
   // resourceId is intentionally polymorphic in Match, so Mongoose cannot
   // populate it from the schema. Hydrate the resource for the UI explicitly.
   return Promise.all(matches.map(async (match) => {
     const resource = match.resourceType === 'BLOOD_BANK'
-      ? await BloodBank.findById(match.resourceId).lean()
-      : await Donor.findById(match.resourceId).lean();
+      ? await BloodBank.findById(match.resourceId).select('name city state location operationalStatus isOpen componentCapabilities').lean()
+      : await Donor.findById(match.resourceId).select('city state location isAvailable availabilityStatus bloodGroup').lean();
     const value = match.toObject();
     return {
       ...value,

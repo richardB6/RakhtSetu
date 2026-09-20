@@ -4,6 +4,8 @@ import { connectToDatabase } from '@/lib/db/mongodb';
 import { BloodBank } from '@/models/BloodBank';
 import { Donor } from '@/models/Donor';
 import { EmergencyRequest } from '@/models/EmergencyRequest';
+import { Match } from '@/models/Match';
+import { Hospital } from '@/models/Hospital';
 import { getCompatibleDonorGroups, BloodGroup, ComponentType } from '@/lib/engine/compatibility';
 
 const RADII = [10, 25, 50, 100];
@@ -13,7 +15,7 @@ function validCoordinate(value: number, min: number, max: number) {
   return Number.isFinite(value) && value >= min && value <= max;
 }
 
-export const GET = withAuth(async (req) => {
+export const GET = withAuth(async (req, context) => {
   try {
     const params = new URL(req.url).searchParams;
     let lat = Number(params.get('lat'));
@@ -25,8 +27,30 @@ export const GET = withAuth(async (req) => {
     const radiusKm = RADII.find((radius) => radius >= requestedRadius) || RADII[RADII.length - 1];
 
     await connectToDatabase();
-    if ((!validCoordinate(lat, -90, 90) || !validCoordinate(lng, -180, 180)) && emergencyId) {
+    if (emergencyId) {
       const emergency = await EmergencyRequest.findById(emergencyId).select('location bloodGroup component');
+      if (!emergency) {
+        return NextResponse.json({ success: false, message: 'Emergency request not found' }, { status: 404 });
+      }
+      if (context.user.role === 'HOSPITAL') {
+        const hospital = await Hospital.findOne({ userId: context.user.userId }).select('_id');
+        const owned = await EmergencyRequest.exists({
+          _id: emergencyId,
+          createdBy: context.user.userId,
+          hospitalId: hospital?._id,
+        });
+        if (!owned) {
+          return NextResponse.json({ success: false, message: 'You do not have access to this request' }, { status: 403 });
+        }
+      } else if (context.user.role === 'BLOOD_BANK') {
+        const relatedMatch = await Match.exists({
+          emergencyRequestId: emergencyId,
+          resourceUserId: context.user.userId,
+        });
+        if (!relatedMatch) {
+          return NextResponse.json({ success: false, message: 'You do not have access to this request' }, { status: 403 });
+        }
+      }
       if (emergency?.location?.coordinates?.length === 2) {
         [lng, lat] = emergency.location.coordinates;
       }

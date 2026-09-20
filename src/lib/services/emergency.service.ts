@@ -143,6 +143,14 @@ export async function getEmergencyById(id: string) {
   return request;
 }
 
+export async function assertEmergencyOwner(id: string, userId: string) {
+  const request = await getEmergencyById(id);
+  if (request.createdBy.toString() !== userId) {
+    throw new Error('You do not have access to this request');
+  }
+  return request;
+}
+
 export async function updateEmergencyStatus(id: string, newStatus: RequestStatus, userId: string, reason?: string) {
   await connectToDatabase();
 
