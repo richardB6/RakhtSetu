@@ -85,8 +85,8 @@ export default function EmergenciesListPage() {
     <div className="container mx-auto px-4 py-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Emergency Board</h1>
-          <p className="text-slate-500 text-sm">Real-time tracking of all active network requests.</p>
+          <h1 className="text-2xl font-semibold tracking-tight">Emergency Board</h1>
+          <p className="text-sm text-muted-foreground">Real-time tracking of all active network requests.</p>
         </div>
         <Link href="/emergencies/new">
           <Button className="bg-red-600 hover:bg-red-700">Create Emergency Request</Button>
@@ -94,7 +94,7 @@ export default function EmergenciesListPage() {
       </div>
 
       {/* Filters */}
-      <div className="bg-white p-4 rounded-lg border shadow-sm mb-6 flex flex-wrap gap-4 items-center">
+      <div className="ops-panel mb-6 flex flex-wrap items-center gap-4 rounded-md p-4">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <Input 
@@ -139,9 +139,9 @@ export default function EmergenciesListPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+      <div className="ops-panel overflow-hidden rounded-md">
         <Table>
-          <TableHeader className="bg-slate-50">
+          <TableHeader className="bg-muted/40">
             <TableRow>
               <TableHead className="w-12 text-center">Pri</TableHead>
               <TableHead>Request ID</TableHead>
@@ -170,7 +170,7 @@ export default function EmergenciesListPage() {
               </TableRow>
             ) : (
               requests.map(req => (
-                <TableRow key={req._id} className="hover:bg-slate-50 transition-colors">
+                <TableRow key={req._id} className="transition-colors hover:bg-muted/30">
                   <TableCell className="text-center">
                     <div className="flex justify-center">
                       <div className={`w-3 h-3 rounded-full ${getPriorityColor(req.severity)}`} title={req.severity} />

@@ -1,65 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth/withAuth';
-import { getDashboardStats } from '@/lib/services/emergency.service';
-import { connectToDatabase } from '@/lib/db/mongodb';
-import { EmergencyRequest } from '@/models/EmergencyRequest';
+import { getCommandCenterData } from '@/lib/services/command-center.service';
 
 export const GET = withAuth(async (req, context) => {
   try {
-    await connectToDatabase();
-    
-    const stats = await getDashboardStats();
-
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-    const byDay = await EmergencyRequest.aggregate([
-      { $match: { createdAt: { $gte: thirtyDaysAgo } } },
-      {
-        $group: {
-          _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
-          count: { $sum: 1 }
-        }
-      },
-      { $sort: { _id: 1 } }
-    ]);
-
-    const bySeverity = await EmergencyRequest.aggregate([
-      {
-        $group: {
-          _id: "$severity",
-          count: { $sum: 1 }
-        }
-      }
-    ]);
-
-    const byComponent = await EmergencyRequest.aggregate([
-      {
-        $group: {
-          _id: "$component",
-          count: { $sum: 1 }
-        }
-      }
-    ]);
-
-    const byBloodGroup = await EmergencyRequest.aggregate([
-      {
-        $group: {
-          _id: "$bloodGroup",
-          count: { $sum: 1 }
-        }
-      }
-    ]);
-
-    const analyticsData = {
-      ...stats,
-      byDay,
-      bySeverity,
-      byComponent,
-      byBloodGroup
-    };
-
-    return NextResponse.json({ success: true, data: analyticsData });
+    const params = new URL(req.url).searchParams;
+    const result = await getCommandCenterData({ userId: context.user.userId, role: context.user.role }, {
+      days: Number(params.get('days') || 30),
+      from: params.get('from') || undefined,
+      to: params.get('to') || undefined,
+    });
+    return NextResponse.json({ success: true, data: { ...result.analytics, stats: result.stats } });
   } catch (error: any) {
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });
   }

@@ -41,12 +41,12 @@ export default function TopBar() {
   };
 
   return (
-    <header className="sticky top-0 z-30 h-14 border-b border-border bg-background/80 backdrop-blur-sm flex items-center justify-between px-6">
+    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border/80 bg-background/85 px-4 backdrop-blur-xl md:px-6">
       {/* Left: Context info */}
-      <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4">
         <div className="flex items-center gap-2 text-muted-foreground">
-          <Activity className="w-4 h-4 text-emerald-500" />
-          <span className="text-xs font-medium">
+          <Activity className="h-4 w-4 text-primary" />
+          <span className="text-xs font-medium tracking-wide">
             {user ? roleLabels[user.role] || 'Dashboard' : 'Loading...'}
           </span>
         </div>
@@ -62,7 +62,7 @@ export default function TopBar() {
         </div>
 
         {/* Search shortcut */}
-        <button className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-md border border-border text-xs text-muted-foreground hover:bg-accent transition-colors">
+        <button aria-label="Open search" className="focus-control hidden items-center gap-2 rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent md:flex">
           <Search className="w-3.5 h-3.5" />
           <span>Search</span>
           <kbd className="ml-1 px-1.5 py-0.5 rounded bg-muted text-[10px] font-mono">/</kbd>
@@ -71,7 +71,8 @@ export default function TopBar() {
         {/* Notifications */}
         <Link
           href="/notifications"
-          className="relative p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+          aria-label={unreadCount ? `${unreadCount} unread notifications` : 'Notifications'}
+          className="focus-control relative rounded-md p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
           <Bell className="w-4 h-4" />
           {unreadCount > 0 && (
@@ -88,7 +89,7 @@ export default function TopBar() {
         {user && (
           <Link
             href="/profile"
-            className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/20 text-primary text-xs font-bold"
+            className="focus-control flex h-8 w-8 items-center justify-center rounded-md bg-primary/15 text-xs font-bold text-primary"
           >
             {user.name.charAt(0).toUpperCase()}
           </Link>

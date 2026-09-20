@@ -1,412 +1,75 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
-import {
-  AlertTriangle,
-  Zap,
-  Activity,
-  Package,
-  Clock,
-  CheckCircle,
-  ExternalLink,
-  MapPin,
-} from 'lucide-react';
-
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useCallback, useEffect, useState } from 'react';
+import { Activity, AlertTriangle, Clock3, ExternalLink, MapPin, Package, RefreshCw, ShieldCheck, Siren, Target } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
-import { timeAgo, formatTime, formatElapsedMinutes } from '@/lib/utils/date';
-import type { IEmergencyRequest, INotification, DashboardStats } from '@/types';
+import { COMPONENT_LABELS } from '@/lib/engine/compatibility';
+import { timeAgo } from '@/lib/utils/date';
 
-// API Response Types
-interface EmergenciesResponse {
-  success: boolean;
-  data: IEmergencyRequest[];
-}
+const ResourceMap = dynamic(() => import('@/components/map/ResourceMap'), { ssr: false });
 
-interface AnalyticsResponse {
-  success: boolean;
-  data: DashboardStats;
-}
+type CommandData = {
+  stats: { activeEmergencies: number; criticalRequests: number; matchingInProgress: number; availableResources: number; avgResponseTimeMinutes: number | null; fulfillmentRate: number | null; verificationQueue: number };
+  board: Array<Record<string, any>>;
+  alerts: Array<{ id: string; requestId: string; requestCode: string; title: string; message: string; severity: string; createdAt: string }>;
+  activity: Array<{ id: string; action: string; description: string; userName: string; createdAt: string }>;
+  resources: { verifiedBanks: number; verifiedDonors: number; inventory: { availableUnits: number; reservedUnits: number } };
+  roleDashboard?: Record<string, any>;
+};
 
-interface NotificationsResponse {
-  success: boolean;
-  data: INotification[];
+const EMPTY_STATS: CommandData['stats'] = { activeEmergencies: 0, criticalRequests: 0, matchingInProgress: 0, availableResources: 0, avgResponseTimeMinutes: null, fulfillmentRate: null, verificationQueue: 0 };
+
+function Metric({ label, value, icon: Icon, tone }: { label: string; value: string | number; icon: typeof Activity; tone: string }) {
+  return <Card className="border-border/70 p-4"><div className="flex items-start justify-between gap-3"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p><span className={`rounded-md p-2 ${tone}`}><Icon className="h-4 w-4" /></span></div><p className="mt-3 text-2xl font-semibold tabular-nums">{value}</p></Card>;
 }
 
 export default function CommandCenterPage() {
   const { user } = useAuth();
-  
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [emergencies, setEmergencies] = useState<IEmergencyRequest[]>([]);
-  const [alerts, setAlerts] = useState<INotification[]>([]);
+  const [data, setData] = useState<CommandData | null>(null);
+  const [selectedEmergency, setSelectedEmergency] = useState<string>();
+  const [filters, setFilters] = useState({ search: '', severity: 'ALL', status: 'ALL', component: 'ALL' });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchData = async () => {
+  const load = useCallback(async () => {
     try {
-      const [statsRes, emergenciesRes, alertsRes] = await Promise.all([
-        fetch('/api/analytics').then((r) => r.json()),
-        fetch('/api/emergencies?limit=10&page=1').then((r) => r.json()),
-        fetch('/api/notifications?limit=8').then((r) => r.json()),
-      ]);
-
-      if (statsRes.success) setStats(statsRes.data);
-      if (emergenciesRes.success) setEmergencies(emergenciesRes.data);
-      if (alertsRes.success) setAlerts(alertsRes.data);
+      const params = new URLSearchParams({ ...filters, days: '30' });
+      const response = await fetch(`/api/command-center?${params}`);
+      const payload = await response.json();
+      if (!response.ok || !payload.success) throw new Error(payload.message || 'Unable to load command center');
+      setData(payload.data);
       setError(null);
-    } catch (err) {
-      console.error('Failed to fetch command center data:', err);
-      setError('Unable to load live data. Retrying...');
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Unable to load command center');
     } finally {
       setLoading(false);
     }
-  };
+  }, [filters]);
 
   useEffect(() => {
-    fetchData();
+    void load();
+    const timer = setInterval(() => void load(), 15000);
+    return () => clearInterval(timer);
+  }, [load]);
 
-    // SWR-like polling pattern
-    const statsInterval = setInterval(() => {
-      fetch('/api/analytics')
-        .then((r) => r.json())
-        .then((res) => {
-          if (res.success) setStats(res.data);
-        })
-        .catch(console.error);
-    }, 15000);
+  const stats = data?.stats || EMPTY_STATS;
+  const roleDashboard = data?.roleDashboard;
+  const formatMinutes = (value: number | null) => value === null ? 'Insufficient data' : `${value.toFixed(1)} min`;
+  const updateFilter = (key: keyof typeof filters, value: string) => setFilters((current) => ({ ...current, [key]: value }));
 
-    const emergenciesInterval = setInterval(() => {
-      fetch('/api/emergencies?limit=10&page=1')
-        .then((r) => r.json())
-        .then((res) => {
-          if (res.success) setEmergencies(res.data);
-        })
-        .catch(console.error);
-      
-      fetch('/api/notifications?limit=8')
-        .then((r) => r.json())
-        .then((res) => {
-          if (res.success) setAlerts(res.data);
-        })
-        .catch(console.error);
-    }, 10000);
-
-    return () => {
-      clearInterval(statsInterval);
-      clearInterval(emergenciesInterval);
-    };
-  }, []);
-
-  const formatMinSec = (totalMinutes: number) => {
-    const mins = Math.floor(totalMinutes);
-    const secs = Math.round((totalMinutes - mins) * 60);
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const statCards = [
-    {
-      title: 'ACTIVE EMERGENCIES',
-      value: stats?.activeEmergencies ?? 0,
-      icon: AlertTriangle,
-      color: 'text-orange-500',
-      bgColor: 'bg-orange-500/10',
-    },
-    {
-      title: 'CRITICAL REQUESTS',
-      value: stats?.criticalRequests ?? 0,
-      icon: Zap,
-      color: 'text-red-500',
-      bgColor: 'bg-red-500/10',
-    },
-    {
-      title: 'MATCHING IN PROGRESS',
-      value: stats?.matchingInProgress ?? 0,
-      icon: Activity,
-      color: 'text-blue-500',
-      bgColor: 'bg-blue-500/10',
-    },
-    {
-      title: 'AVAILABLE RESOURCES',
-      value: stats?.availableResources ?? 0,
-      icon: Package,
-      color: 'text-indigo-500',
-      bgColor: 'bg-indigo-500/10',
-    },
-    {
-      title: 'AVG RESPONSE',
-      value: stats ? formatMinSec(stats.avgResponseTimeMinutes) : '00:00',
-      icon: Clock,
-      color: 'text-amber-500',
-      bgColor: 'bg-amber-500/10',
-    },
-    {
-      title: 'FULFILLMENT RATE',
-      value: stats ? `${stats.fulfillmentRate}%` : '0%',
-      icon: CheckCircle,
-      color: 'text-green-500',
-      bgColor: 'bg-green-500/10',
-    },
-  ];
-
-  return (
-    <div className="flex flex-col gap-6 p-6 min-h-screen bg-background text-foreground">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Command Center</h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Real-time emergency operations and resource coordination.
-          </p>
-        </div>
-        {error && (
-          <div className="text-xs font-medium text-destructive bg-destructive/10 px-3 py-1.5 rounded-full flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-destructive animate-pulse" />
-            {error}
-          </div>
-        )}
-      </div>
-
-      {/* Stats Row */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
-        {loading
-          ? Array.from({ length: 6 }).map((_, i) => (
-              <Card key={i} className="rounded-md border-border/50">
-                <CardContent className="p-4 flex flex-col gap-2">
-                  <div className="flex justify-between items-center">
-                    <Skeleton className="h-4 w-24" />
-                    <Skeleton className="h-8 w-8 rounded-full" />
-                  </div>
-                  <Skeleton className="h-8 w-16" />
-                </CardContent>
-              </Card>
-            ))
-          : statCards.map((stat, i) => (
-              <motion.div
-                key={stat.title}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.05 }}
-              >
-                <Card className="rounded-md border-border/50 bg-card overflow-hidden h-full">
-                  <CardContent className="p-4 flex flex-col justify-between h-full gap-3">
-                    <div className="flex justify-between items-start">
-                      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider w-2/3 leading-tight">
-                        {stat.title}
-                      </p>
-                      <div className={cn('p-2 rounded-full', stat.bgColor)}>
-                        <stat.icon className={cn('w-4 h-4', stat.color)} />
-                      </div>
-                    </div>
-                    <div className="text-2xl font-bold">{stat.value}</div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ))}
-      </div>
-
-      {/* Middle Section */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-        {/* Left - Emergency Board */}
-        <div className="xl:col-span-8 flex flex-col gap-4">
-          <div className="flex items-center gap-2">
-            <h2 className="text-lg font-semibold tracking-tight">LIVE EMERGENCY BOARD</h2>
-            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-          </div>
-
-          <Card className="rounded-md border-border/50">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left">
-                <thead className="text-xs text-muted-foreground bg-muted/50 border-b border-border/50">
-                  <tr>
-                    <th className="px-4 py-3 font-medium">Req ID</th>
-                    <th className="px-4 py-3 font-medium">Type</th>
-                    <th className="px-4 py-3 font-medium">Qty</th>
-                    <th className="px-4 py-3 font-medium">Status</th>
-                    <th className="px-4 py-3 font-medium text-right">Elapsed</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/50">
-                  {loading ? (
-                    Array.from({ length: 5 }).map((_, i) => (
-                      <tr key={i}>
-                        <td className="px-4 py-3"><Skeleton className="h-4 w-16" /></td>
-                        <td className="px-4 py-3"><Skeleton className="h-4 w-20" /></td>
-                        <td className="px-4 py-3"><Skeleton className="h-4 w-8" /></td>
-                        <td className="px-4 py-3"><Skeleton className="h-4 w-16" /></td>
-                        <td className="px-4 py-3 text-right"><Skeleton className="h-4 w-12 ml-auto" /></td>
-                      </tr>
-                    ))
-                  ) : emergencies.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
-                        No active emergencies.
-                      </td>
-                    </tr>
-                  ) : (
-                    emergencies.map((req) => (
-                      <tr 
-                        key={req._id} 
-                        className="hover:bg-muted/30 transition-colors group cursor-pointer"
-                      >
-                        <td className="px-4 py-3 font-mono text-xs">
-                          <Link href={`/emergencies/${req._id}`} className="flex items-center gap-2">
-                            <div className={cn(
-                              "w-2 h-2 rounded-full shrink-0",
-                              req.severity === 'CRITICAL' ? 'bg-red-500' :
-                              req.severity === 'HIGH' ? 'bg-amber-500' : 'bg-blue-500'
-                            )} />
-                            {req.requestId || req._id.substring(0, 8)}
-                          </Link>
-                        </td>
-                        <td className="px-4 py-3">
-                          <Link href={`/emergencies/${req._id}`}>
-                            <Badge variant="outline" className="font-semibold bg-background">
-                              {req.bloodGroup} {req.component}
-                            </Badge>
-                          </Link>
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground">
-                          {req.quantityFulfilled}/{req.quantity}
-                        </td>
-                        <td className="px-4 py-3">
-                          <Link href={`/emergencies/${req._id}`}>
-                            <Badge className={cn(
-                              "text-[10px] tracking-wide",
-                              req.severity === 'CRITICAL' ? 'bg-destructive hover:bg-destructive/90 text-destructive-foreground' :
-                              req.status === 'MATCHING' ? 'bg-blue-500 hover:bg-blue-600 text-white' :
-                              req.status === 'FULFILLED' ? 'bg-green-500 hover:bg-green-600 text-white' :
-                              'bg-muted text-muted-foreground'
-                            )}>
-                              {req.status}
-                            </Badge>
-                          </Link>
-                        </td>
-                        <td className="px-4 py-3 text-right text-muted-foreground tabular-nums">
-                          <Link href={`/emergencies/${req._id}`} className="flex justify-end items-center gap-2">
-                            {timeAgo(req.createdAt)}
-                            <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                          </Link>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        </div>
-
-        {/* Right - Critical Alerts & Activity */}
-        <div className="xl:col-span-4 flex flex-col gap-4">
-          <h2 className="text-lg font-semibold tracking-tight uppercase">Critical Alerts</h2>
-          
-          <Card className="rounded-md border-border/50 h-[300px] overflow-y-auto">
-            <div className="flex flex-col divide-y divide-border/50">
-              {loading ? (
-                 Array.from({ length: 4 }).map((_, i) => (
-                   <div key={i} className="p-4 flex gap-3">
-                     <Skeleton className="w-1 h-10 rounded-full" />
-                     <div className="flex-1 space-y-2">
-                       <Skeleton className="h-3 w-16" />
-                       <Skeleton className="h-4 w-full" />
-                     </div>
-                   </div>
-                 ))
-              ) : alerts.length === 0 ? (
-                <div className="p-8 text-center text-muted-foreground text-sm">
-                  No recent alerts.
-                </div>
-              ) : (
-                alerts.map((alert) => (
-                  <div key={alert._id} className="p-3 flex gap-3 hover:bg-muted/30 transition-colors">
-                    <div className={cn(
-                      "w-1 rounded-full shrink-0",
-                      alert.severity === 'CRITICAL' ? 'bg-red-500' :
-                      alert.severity === 'HIGH' ? 'bg-orange-500' :
-                      'bg-blue-500'
-                    )} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="text-[10px] text-muted-foreground font-medium">
-                          {formatTime(alert.createdAt)}
-                        </span>
-                        <Badge variant="outline" className="text-[9px] h-4 px-1 rounded-sm border-muted-foreground/30 text-muted-foreground">
-                          {alert.type.replace('_', ' ')}
-                        </Badge>
-                      </div>
-                      <p className="text-xs font-medium truncate text-foreground">
-                        {alert.title}
-                      </p>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </Card>
-
-          <h2 className="text-lg font-semibold tracking-tight uppercase mt-2">Live Response Activity</h2>
-          <Card className="rounded-md border-border/50 flex-1 min-h-[150px] p-4">
-            <div className="relative border-l-2 border-muted ml-3 space-y-4">
-               {/* Mocking some activity since audit logs aren't exposed in the requirements via a specific API */}
-               {emergencies.slice(0, 3).map((req, i) => (
-                 <div key={`act-${i}`} className="relative pl-4">
-                   <div className="absolute w-2 h-2 bg-background border-2 border-primary rounded-full -left-[5px] top-1.5" />
-                   <p className="text-xs text-muted-foreground">{timeAgo(req.updatedAt)}</p>
-                   <p className="text-sm font-medium">
-                     {req.status === 'MATCHING' ? `Matching initiated for ${req.bloodGroup} ${req.component}` : 
-                      req.status === 'FULFILLED' ? `Request ${req.requestId} fulfilled` :
-                      `Emergency ${req.requestId} created`}
-                   </p>
-                 </div>
-               ))}
-               {!loading && emergencies.length === 0 && (
-                 <p className="text-xs text-muted-foreground pl-4">System idling. Waiting for activity...</p>
-               )}
-            </div>
-          </Card>
-        </div>
-      </div>
-
-      {/* Bottom Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-        <Link href="/command-center/map" className="block">
-          <Card className="rounded-md border-border/50 hover:bg-muted/30 transition-colors cursor-pointer">
-            <CardContent className="p-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-full bg-blue-500/10">
-                  <MapPin className="w-5 h-5 text-blue-500" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-sm">View Resource Map</h3>
-                  <p className="text-xs text-muted-foreground">Live geographic view of blood banks and donors</p>
-                </div>
-              </div>
-              <ExternalLink className="w-4 h-4 text-muted-foreground" />
-            </CardContent>
-          </Card>
-        </Link>
-        <Link href="/emergencies/new" className="block">
-          <Card className="rounded-md border-border/50 hover:bg-muted/30 transition-colors cursor-pointer border-l-4 border-l-red-500">
-            <CardContent className="p-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-full bg-red-500/10">
-                  <AlertTriangle className="w-5 h-5 text-red-500" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-sm">Create Emergency Request</h3>
-                  <p className="text-xs text-muted-foreground">Instantly dispatch a new critical requirement</p>
-                </div>
-              </div>
-              <ExternalLink className="w-4 h-4 text-muted-foreground" />
-            </CardContent>
-          </Card>
-        </Link>
-      </div>
-    </div>
-  );
+  return <div className="mx-auto max-w-[1800px] space-y-6 p-1">
+    <header className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between"><div><div className="flex items-center gap-2"><Siren className="h-5 w-5 text-red-500" /><h1 className="text-2xl font-semibold tracking-tight">Emergency Command Center</h1></div><p className="mt-1 text-sm text-muted-foreground">Live coordination across emergencies, verified resources, and response activity.</p></div><div className="flex items-center gap-2"><span className="text-xs text-muted-foreground">{user?.role?.replace('_', ' ')}</span><Button variant="outline" size="sm" onClick={() => { setLoading(true); void load(); }}><RefreshCw className="mr-2 h-4 w-4" />Refresh</Button>{(user?.role === 'HOSPITAL' || user?.role === 'ADMIN') && <Link href="/emergencies/new"><Button size="sm"><AlertTriangle className="mr-2 h-4 w-4" />Create emergency</Button></Link>}</div></header>
+    {error && <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div>}
+    <section className="grid grid-cols-2 gap-3 lg:grid-cols-6">{loading ? Array.from({ length: 6 }).map((_, index) => <Skeleton key={index} className="h-28" />) : <><Metric label="Active emergencies" value={stats.activeEmergencies} icon={Siren} tone="bg-red-500/10 text-red-600" /><Metric label="Critical requests" value={stats.criticalRequests} icon={AlertTriangle} tone="bg-orange-500/10 text-orange-600" /><Metric label="Currently matching" value={stats.matchingInProgress} icon={Target} tone="bg-blue-500/10 text-blue-600" /><Metric label="Verified resources" value={stats.availableResources} icon={ShieldCheck} tone="bg-emerald-500/10 text-emerald-600" /><Metric label="Average response" value={formatMinutes(stats.avgResponseTimeMinutes)} icon={Clock3} tone="bg-amber-500/10 text-amber-600" /><Metric label="Fulfillment rate" value={stats.fulfillmentRate === null ? 'Insufficient data' : `${stats.fulfillmentRate.toFixed(1)}%`} icon={Activity} tone="bg-violet-500/10 text-violet-600" /></>}</section>
+    {roleDashboard?.type === 'HOSPITAL' && <Card className="border-border/70 p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold">Hospital operations</h2><p className="text-xs text-muted-foreground">Only requests created by this hospital are included.</p></div><div className="flex gap-2"><Link href="/emergencies"><Button variant="outline" size="sm">Active requests</Button></Link><Link href="/notifications"><Button variant="outline" size="sm">Notifications</Button></Link><Link href="/emergencies/new"><Button size="sm"><AlertTriangle className="mr-2 h-4 w-4" />Create emergency</Button></Link></div></div><div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-5">{[['Active', roleDashboard.activeRequests], ['Critical', roleDashboard.criticalRequests], ['Pending matches', roleDashboard.pendingMatches], ['Accepted matches', roleDashboard.acceptedMatches], ['Fulfilled', roleDashboard.fulfilledRequests]].map(([label, value]) => <div key={String(label)} className="rounded-md bg-muted/40 p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-xl font-semibold">{value}</p></div>)}</div></Card>}
+    {roleDashboard?.type === 'BLOOD_BANK' && <Card className="border-border/70 p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold">Blood bank operations</h2><p className="text-xs text-muted-foreground">{roleDashboard.bank?.name || 'Authorized blood bank'} · {roleDashboard.bank?.operationalStatus || 'Status unavailable'}</p></div><div className="flex gap-2"><Link href="/inventory"><Button variant="outline" size="sm"><Package className="mr-2 h-4 w-4" />Inventory</Button></Link><Link href="/notifications"><Button variant="outline" size="sm">Notifications</Button></Link><Link href="/emergencies"><Button size="sm">Emergency responses</Button></Link></div></div><div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-5">{[['Available units', roleDashboard.inventory?.availableUnits || 0], ['Reserved units', roleDashboard.inventory?.reservedUnits || 0], ['Pending responses', roleDashboard.pendingResponses], ['Accepted requests', roleDashboard.acceptedRequests], ['Fulfillment history', roleDashboard.fulfillmentHistory]].map(([label, value]) => <div key={String(label)} className="rounded-md bg-muted/40 p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-xl font-semibold">{value}</p></div>)}</div><div className="mt-4 grid gap-4 md:grid-cols-2"><div><p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Recent notifications</p>{roleDashboard.recentNotifications?.length ? roleDashboard.recentNotifications.slice(0, 3).map((notification: { _id: string; title: string; createdAt: string }) => <p key={notification._id} className="truncate text-sm">{notification.title} <span className="text-xs text-muted-foreground">{timeAgo(notification.createdAt)}</span></p>) : <p className="text-sm text-muted-foreground">No recent notifications.</p>}</div><div><p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Response activity</p>{roleDashboard.activity?.length ? roleDashboard.activity.slice(0, 3).map((event: { _id: string; description: string }) => <p key={event._id} className="truncate text-sm">{event.description}</p>) : <p className="text-sm text-muted-foreground">No recent activity.</p>}</div></div></Card>}
+    <section className="grid gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,.85fr)]"><Card className="overflow-hidden border-border/70"><div className="flex flex-col gap-3 border-b p-4 md:flex-row md:items-center"><div><h2 className="font-semibold">Live emergency board</h2><p className="text-xs text-muted-foreground">Server-filtered operational requests</p></div><div className="flex flex-1 flex-wrap gap-2 md:justify-end"><input value={filters.search} onChange={(event) => updateFilter('search', event.target.value)} placeholder="Search request, patient, city" className="h-9 min-w-48 rounded-md border bg-background px-3 text-sm" /><select value={filters.severity} onChange={(event) => updateFilter('severity', event.target.value)} className="h-9 rounded-md border bg-background px-2 text-sm"><option>ALL</option><option>CRITICAL</option><option>HIGH</option><option>NORMAL</option></select><select value={filters.status} onChange={(event) => updateFilter('status', event.target.value)} className="h-9 rounded-md border bg-background px-2 text-sm"><option>ALL</option><option>CREATED</option><option>MATCHING</option><option>RESOURCES_NOTIFIED</option><option>ESCALATED</option><option>FULFILLED</option></select><select value={filters.component} onChange={(event) => updateFilter('component', event.target.value)} className="h-9 rounded-md border bg-background px-2 text-sm"><option>ALL</option>{Object.keys(COMPONENT_LABELS).map((component) => <option key={component}>{component}</option>)}</select></div></div><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="border-b bg-muted/40 text-xs text-muted-foreground"><tr>{['Priority', 'Request', 'Hospital', 'Need', 'Location', 'Matches', 'Response', 'State', ''].map((heading) => <th key={heading} className="whitespace-nowrap px-3 py-3 font-medium">{heading}</th>)}</tr></thead><tbody className="divide-y">{loading ? Array.from({ length: 5 }).map((_, index) => <tr key={index}><td colSpan={9} className="px-3 py-4"><Skeleton className="h-5 w-full" /></td></tr>) : !data?.board.length ? <tr><td colSpan={9} className="px-3 py-10 text-center text-muted-foreground">No emergencies match the current filters.</td></tr> : data.board.map((request) => <tr key={request._id} className="cursor-pointer hover:bg-muted/30" onClick={() => setSelectedEmergency(String(request._id))}><td className="px-3 py-3"><Badge variant={request.severity === 'CRITICAL' ? 'destructive' : 'outline'}>{request.severity}</Badge></td><td className="px-3 py-3 font-mono text-xs"><Link href={`/emergencies/${request._id}`} onClick={(event) => event.stopPropagation()}>{request.requestId}</Link><div className="text-[11px] text-muted-foreground">{timeAgo(request.createdAt)}</div></td><td className="max-w-36 truncate px-3 py-3">{request.hospitalId?.name || 'Hospital'}</td><td className="whitespace-nowrap px-3 py-3">{request.bloodGroup} {request.component}</td><td className="px-3 py-3 text-muted-foreground"><MapPin className="mr-1 inline h-3.5 w-3.5" />{request.city}</td><td className="px-3 py-3 tabular-nums">{request.matchCount}</td><td className="px-3 py-3"><Badge variant="outline">{request.responseStatus}</Badge></td><td className="px-3 py-3"><Badge variant="secondary">{request.status.replace(/_/g, ' ')}</Badge></td><td className="px-3 py-3"><Link href={`/emergencies/${request._id}`} aria-label={`Open ${request.requestId}`}><ExternalLink className="h-4 w-4" /></Link></td></tr>)}</tbody></table></div></Card><div className="space-y-6"><Card className="border-border/70"><div className="border-b p-4"><h2 className="font-semibold">Critical alerts</h2><p className="text-xs text-muted-foreground">Derived from active request state</p></div><div className="divide-y">{!data?.alerts.length ? <p className="p-6 text-center text-sm text-muted-foreground">No critical alerts.</p> : data.alerts.slice(0, 8).map((alert) => <Link key={alert.id} href={`/emergencies/${alert.requestId}`} className="block p-3 hover:bg-muted/30"><div className="flex items-start gap-3"><span className={`mt-1 h-2.5 w-2.5 rounded-full ${alert.severity === 'CRITICAL' ? 'bg-red-500' : 'bg-amber-500'}`} /><div className="min-w-0"><p className="text-sm font-medium">{alert.title}</p><p className="text-xs text-muted-foreground">{alert.message}</p><p className="mt-1 text-[11px] text-muted-foreground">{alert.requestCode} · {timeAgo(alert.createdAt)}</p></div></div></Link>)}</div></Card><Card className="border-border/70"><div className="border-b p-4"><h2 className="font-semibold">Response activity</h2><p className="text-xs text-muted-foreground">Audit events from the current scope</p></div><div className="divide-y">{!data?.activity.length ? <p className="p-6 text-center text-sm text-muted-foreground">No response activity.</p> : data.activity.slice(0, 6).map((event) => <div key={String(event.id)} className="p-3"><p className="text-sm font-medium">{event.description}</p><p className="mt-1 text-xs text-muted-foreground">{event.action.replace(/_/g, ' ')} · {event.userName} · {timeAgo(event.createdAt)}</p></div>)}</div></Card></div></section>
+    <section className="grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(280px,.7fr)]"><Card className="overflow-hidden border-border/70"><div className="border-b p-4"><h2 className="font-semibold">Live resource map</h2><p className="text-xs text-muted-foreground">Existing verified-resource map, centered on the selected emergency</p></div><div className="h-[520px] p-3"><ResourceMap emergencyId={selectedEmergency} /></div></Card><Card className="border-border/70 p-4"><h2 className="font-semibold">Resource readiness</h2><div className="mt-4 space-y-4 text-sm"><div className="flex items-center justify-between"><span className="text-muted-foreground">Verified blood banks</span><strong>{data?.resources.verifiedBanks ?? 0}</strong></div><div className="flex items-center justify-between"><span className="text-muted-foreground">Available donors</span><strong>{data?.resources.verifiedDonors ?? 0}</strong></div><div className="flex items-center justify-between"><span className="text-muted-foreground">Inventory available</span><strong>{data?.resources.inventory.availableUnits ?? 0} units</strong></div><div className="flex items-center justify-between"><span className="text-muted-foreground">Inventory reserved</span><strong>{data?.resources.inventory.reservedUnits ?? 0} units</strong></div><div className="flex items-center justify-between"><span className="text-muted-foreground">Verification queue</span><Link className="font-semibold text-primary" href="/verification">{stats.verificationQueue}</Link></div></div><Link href="/map" className="mt-6 inline-flex items-center text-sm font-medium text-primary"><Package className="mr-2 h-4 w-4" />Open full resource map</Link></Card></section>
+  </div>;
 }

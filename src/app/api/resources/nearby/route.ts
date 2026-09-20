@@ -19,16 +19,20 @@ export const GET = withAuth(async (req) => {
     let lat = Number(params.get('lat'));
     let lng = Number(params.get('lng'));
     const emergencyId = params.get('emergencyId');
-    const bloodGroup = params.get('bloodGroup');
-    const component = params.get('component');
+    let bloodGroup = params.get('bloodGroup');
+    let component = params.get('component');
     const requestedRadius = Number(params.get('radiusKm') || 10);
     const radiusKm = RADII.find((radius) => radius >= requestedRadius) || RADII[RADII.length - 1];
 
     await connectToDatabase();
     if ((!validCoordinate(lat, -90, 90) || !validCoordinate(lng, -180, 180)) && emergencyId) {
-      const emergency = await EmergencyRequest.findById(emergencyId).select('location');
+      const emergency = await EmergencyRequest.findById(emergencyId).select('location bloodGroup component');
       if (emergency?.location?.coordinates?.length === 2) {
         [lng, lat] = emergency.location.coordinates;
+      }
+      if (emergency) {
+        bloodGroup = bloodGroup || emergency.bloodGroup;
+        component = component || emergency.component;
       }
     }
     if (!validCoordinate(lat, -90, 90) || !validCoordinate(lng, -180, 180)) {

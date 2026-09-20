@@ -72,14 +72,14 @@ export default function NewEmergencyPage() {
   const selectedSeverity = SEVERITY_CONFIG[formData.severity as keyof typeof SEVERITY_CONFIG];
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-6xl">
+    <div className="mx-auto max-w-6xl px-1 py-4 md:py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight text-slate-900">New Emergency Request</h1>
-        <p className="text-slate-500 mt-2">Initialize a coordinated search for compatible blood components.</p>
+        <h1 className="text-3xl font-semibold tracking-tight text-foreground">New Emergency Request</h1>
+        <p className="mt-2 text-muted-foreground">Initialize a coordinated search for compatible blood components.</p>
       </div>
 
       {error && (
-        <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-md border border-red-200 flex items-center gap-2">
+        <div className="mb-6 flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-4 text-destructive">
           <AlertTriangle className="w-5 h-5" />
           {error}
         </div>
@@ -87,10 +87,10 @@ export default function NewEmergencyPage() {
 
       <div className="grid lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2">
-          <form onSubmit={handleSubmit} className="bg-white border rounded-xl shadow-sm overflow-hidden">
-            <div className="p-6 border-b bg-slate-50/50">
-              <h2 className="text-lg font-semibold flex items-center gap-2">
-                <Activity className="w-5 h-5 text-blue-500" />
+          <form onSubmit={handleSubmit} className="ops-panel overflow-hidden rounded-md">
+            <div className="border-b border-border/70 bg-muted/20 p-6">
+                <h2 className="flex items-center gap-2 text-lg font-semibold">
+                <Activity className="h-5 w-5 text-primary" />
                 Clinical Requirements
               </h2>
             </div>
@@ -194,9 +194,9 @@ export default function NewEmergencyPage() {
               </div>
             </div>
             
-            <div className="p-6 bg-slate-50 border-t flex justify-end gap-4">
+            <div className="flex justify-end gap-4 border-t border-border/70 bg-muted/20 p-6">
               <Button type="button" variant="outline" onClick={() => router.back()}>Cancel</Button>
-              <Button type="submit" disabled={loading} className="bg-red-600 hover:bg-red-700">
+              <Button type="submit" disabled={loading} className="bg-emergency text-emergency-foreground hover:bg-emergency/90">
                 {loading ? 'Initializing...' : 'Initialize Request'}
               </Button>
             </div>
@@ -205,13 +205,13 @@ export default function NewEmergencyPage() {
 
         {/* Live Preview Column */}
         <div className="lg:col-span-1 space-y-6">
-          <div className="bg-white border rounded-xl shadow-sm p-6 sticky top-8">
-            <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-6">Request Summary</h3>
+          <div className="ops-panel sticky top-8 rounded-md p-6">
+            <h3 className="ops-kicker mb-6">Request Summary</h3>
             
             <div className="space-y-6">
               <div>
                 <div className="text-sm text-slate-500 mb-1">Requirement</div>
-                <div className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+                <div className="flex items-center gap-2 text-2xl font-bold text-foreground">
                   {formData.quantity}x {formData.bloodGroup || '??'}
                 </div>
                 <div className="text-sm font-medium text-slate-600">

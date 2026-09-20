@@ -55,9 +55,9 @@ export default function NotificationsPage() {
     switch (severity) {
       case 'CRITICAL': return 'border-l-red-500 bg-red-500/10';
       case 'HIGH': return 'border-l-amber-500 bg-amber-500/10';
-      case 'NORMAL': return 'border-l-blue-500 bg-slate-800';
-      case 'INFO': return 'border-l-slate-500 bg-slate-800';
-      default: return 'border-l-slate-500 bg-slate-800';
+      case 'NORMAL': return 'border-l-blue-400 bg-card';
+      case 'INFO': return 'border-l-slate-500 bg-card';
+      default: return 'border-l-slate-500 bg-card';
     }
   };
 
@@ -71,33 +71,33 @@ export default function NotificationsPage() {
   };
 
   return (
-    <div className="p-6 max-w-4xl mx-auto text-slate-200">
-      <div className="flex items-center justify-between mb-8">
+    <div className="mx-auto max-w-4xl space-y-6 text-foreground">
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold text-white">Notification Center</h1>
+          <h1 className="text-2xl font-semibold">Notification Center</h1>
           {unreadCount > 0 && (
-            <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full">
+            <span className="rounded-md bg-destructive/15 px-2 py-1 text-xs font-bold text-destructive">
               {unreadCount} new
             </span>
           )}
         </div>
         <button 
           onClick={markAllRead}
-          className="text-sm text-slate-400 hover:text-white transition-colors"
+          className="focus-control text-sm text-muted-foreground transition-colors hover:text-foreground"
         >
           Mark all as read
         </button>
       </div>
 
-      <div className="flex gap-2 mb-6">
+      <div className="flex gap-2">
         {(['ALL', 'CRITICAL', 'UNREAD'] as const).map(f => (
           <button
             key={f}
             onClick={() => setFilter(f)}
             className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
               filter === f 
-                ? 'bg-red-500/20 text-red-500 border border-red-500/50' 
-                : 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700'
+                ? 'bg-primary/15 text-primary border border-primary/40'
+                : 'bg-muted text-muted-foreground border border-border hover:bg-accent'
             }`}
           >
             {f.charAt(0) + f.slice(1).toLowerCase()}
@@ -107,29 +107,29 @@ export default function NotificationsPage() {
 
       <div className="space-y-4">
         {loading ? (
-          <div className="text-center py-8 text-slate-400">Loading notifications...</div>
+          <div className="ops-panel p-8 text-center text-muted-foreground">Loading notifications...</div>
         ) : filtered.length === 0 ? (
-          <div className="text-center py-12 bg-slate-900 rounded-lg border border-slate-800">
-            <Bell className="w-12 h-12 text-slate-600 mx-auto mb-4" />
-            <p className="text-slate-400">No notifications found.</p>
+          <div className="ops-panel p-12 text-center">
+            <Bell className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+            <p className="text-muted-foreground">No notifications found.</p>
           </div>
         ) : (
           filtered.map(notif => (
             <div 
               key={notif._id}
               onClick={() => !notif.isRead && markRead(notif._id)}
-              className={`p-4 rounded-lg border-l-4 border-r border-y border-r-slate-800 border-y-slate-800 cursor-pointer transition-all ${getSeverityStyles(notif.severity)} ${!notif.isRead ? 'opacity-100 shadow-md shadow-black/20' : 'opacity-70'}`}
+              className={`cursor-pointer rounded-md border-y border-r border-l-4 p-4 transition-all ${getSeverityStyles(notif.severity)} ${!notif.isRead ? 'opacity-100 shadow-md shadow-black/20' : 'opacity-70'}`}
             >
               <div className="flex gap-4">
                 <div className="mt-1">{getIcon(notif.severity)}</div>
                 <div className="flex-1">
                   <div className="flex justify-between items-start mb-1">
-                    <h3 className={`text-sm ${notif.isRead ? 'font-medium text-slate-300' : 'font-bold text-white'}`}>
+                    <h3 className={`text-sm ${notif.isRead ? 'font-medium text-muted-foreground' : 'font-bold text-foreground'}`}>
                       {notif.title}
                     </h3>
-                    <span className="text-xs text-slate-500">{timeAgo(notif.createdAt)}</span>
+                    <span className="text-xs text-muted-foreground">{timeAgo(notif.createdAt)}</span>
                   </div>
-                  <p className="text-sm text-slate-400">{notif.message}</p>
+                  <p className="text-sm text-muted-foreground">{notif.message}</p>
                 </div>
               </div>
             </div>

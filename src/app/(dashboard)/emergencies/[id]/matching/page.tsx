@@ -91,10 +91,10 @@ export default function LiveMatchingPage() {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[80vh] p-4 max-w-3xl mx-auto w-full">
+    <div className="mx-auto flex min-h-[80vh] w-full max-w-4xl flex-col items-center justify-center p-1 md:p-4">
       
       {!isComplete ? (
-        <Card className="w-full bg-zinc-950/80 border-zinc-800 p-8 md:p-12 shadow-2xl relative overflow-hidden backdrop-blur-sm">
+        <Card className="ops-panel relative w-full overflow-hidden p-8 shadow-2xl backdrop-blur-sm md:p-12">
           <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-purple-500/5" />
           
           <div className="relative z-10 flex flex-col items-center">
@@ -184,7 +184,7 @@ export default function LiveMatchingPage() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.15 }}
                 >
-                  <Card className="bg-zinc-950 border-zinc-800 hover:border-zinc-700 transition-colors">
+                  <Card className="ops-panel transition-colors hover:border-primary/50">
                     <div className="p-4 flex items-center justify-between">
                       <div className="flex items-center gap-4">
                         <div className="w-10 h-10 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center font-mono text-zinc-400 text-sm font-bold">

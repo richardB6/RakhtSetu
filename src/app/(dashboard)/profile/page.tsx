@@ -16,7 +16,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="p-6 max-w-3xl mx-auto text-slate-200">
+    <div className="mx-auto max-w-3xl text-foreground">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-2xl font-bold text-white">My Profile</h1>
         <button className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-sm font-medium transition-colors">
@@ -25,7 +25,7 @@ export default function ProfilePage() {
         </button>
       </div>
 
-      <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
+      <div className="ops-panel overflow-hidden rounded-md">
         <div className="h-32 bg-gradient-to-r from-slate-800 to-slate-900 relative">
           <div className="absolute -bottom-12 left-8 w-24 h-24 bg-slate-800 border-4 border-slate-900 rounded-full flex items-center justify-center text-4xl shadow-xl">
             {user.avatar ? (

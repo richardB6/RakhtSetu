@@ -17,7 +17,6 @@ import {
   Settings,
   LogOut,
   Droplets,
-  Users,
   Heart,
   Package,
   Activity,
@@ -124,9 +123,9 @@ export default function Sidebar() {
   };
 
   return (
-    <aside className="fixed left-0 top-0 z-40 h-screen w-64 border-r border-border bg-sidebar flex flex-col">
+    <aside className="fixed left-0 top-0 z-40 flex h-screen w-64 flex-col border-r border-border bg-sidebar max-md:bottom-0 max-md:top-auto max-md:h-16 max-md:w-full max-md:flex-row max-md:border-r-0 max-md:border-t">
       {/* Logo Header */}
-      <div className="flex items-center gap-3 px-5 py-5 border-b border-border">
+      <div className="flex items-center gap-3 border-b border-border px-5 py-5 max-md:hidden">
         <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10">
           <Droplets className="w-5 h-5 text-primary" />
         </div>
@@ -141,7 +140,7 @@ export default function Sidebar() {
       </div>
 
       {/* System Status */}
-      <div className="px-5 py-3 border-b border-border">
+      <div className="border-b border-border px-5 py-3 max-md:hidden">
         <div className="flex items-center gap-2">
           <span className="relative flex h-2 w-2">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -154,7 +153,7 @@ export default function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-0.5">
+      <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-3 max-md:flex max-md:gap-1 max-md:overflow-x-auto max-md:overflow-y-hidden max-md:px-2 max-md:py-2">
         {filteredItems.map((item) => {
           const Icon = item.icon;
           const isActive =
@@ -166,14 +165,14 @@ export default function Sidebar() {
               key={item.href}
               href={item.href}
               className={cn(
-                'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors',
+                'focus-control flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
                 isActive
                   ? 'bg-primary/10 text-primary'
                   : 'text-muted-foreground hover:text-foreground hover:bg-accent'
               )}
             >
               <Icon className="w-4 h-4 shrink-0" />
-              <span className="truncate">{item.label}</span>
+              <span className="truncate max-md:text-[11px]">{item.label}</span>
               {item.badge && (
                 <Badge variant="destructive" className="ml-auto text-[10px] px-1.5 py-0">
                   {item.badge}
@@ -185,7 +184,7 @@ export default function Sidebar() {
       </nav>
 
       {/* User Section */}
-      <div className="border-t border-border px-4 py-3">
+      <div className="border-t border-border px-4 py-3 max-md:hidden">
         {user && (
           <div className="flex items-center justify-between">
             <div className="min-w-0">
@@ -198,7 +197,7 @@ export default function Sidebar() {
             </div>
             <button
               onClick={() => logout()}
-              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+              className="focus-control rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               title="Sign out"
             >
               <LogOut className="w-4 h-4" />

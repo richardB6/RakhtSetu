@@ -15,15 +15,26 @@ interface AnalyticsData {
   stats: {
     activeEmergencies: number;
     criticalRequests: number;
-    avgResponseTimeMinutes: number;
-    fulfillmentRate: number;
+    avgResponseTimeMinutes: number | null;
+    fulfillmentRate: number | null;
     totalFulfilled: number;
     matchingInProgress: number;
+    medianResponseTimeMinutes: number | null;
+    averageMatchingTimeMinutes: number | null;
+    averageFulfillmentTimeMinutes: number | null;
+    escalationRate: number | null;
+    resourceResponseRate: number | null;
+    resourceAcceptanceRate: number | null;
   };
-  emergenciesByDay: Array<{ date: string; count: number }>;
-  bySeverity: Array<{ severity: string; count: number }>;
-  byComponent: Array<{ component: string; count: number }>;
-  byBloodGroup: Array<{ bloodGroup: string; count: number }>;
+  byDay: Array<{ _id: string; count: number }>;
+  byStatus: Array<{ _id: string; count: number }>;
+  bySeverity: Array<{ _id: string; count: number }>;
+  byComponent: Array<{ _id: string; count: number }>;
+  byBloodGroup: Array<{ _id: string; count: number }>;
+  responseByDay: Array<{ _id: string; averageMinutes: number }>;
+  byHour: Array<{ _id: number; count: number }>;
+  byLocation: Array<{ _id: string; count: number }>;
+  fulfillmentByResourceType: Array<{ _id: string; count: number }>;
 }
 
 const COLORS = ['#ef4444', '#f59e0b', '#3b82f6', '#10b981', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
@@ -32,10 +43,14 @@ export default function AnalyticsPage() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState('30');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
 
   const fetchAnalytics = useCallback(async () => {
     try {
-      const res = await fetch(`/api/analytics?days=${period}`);
+      const params = new URLSearchParams({ days: period });
+      if (period === 'custom' && from && to) { params.set('from', new Date(`${from}T00:00:00`).toISOString()); params.set('to', new Date(`${to}T23:59:59`).toISOString()); }
+      const res = await fetch(`/api/analytics?${params}`);
       if (res.ok) {
         const json = await res.json();
         setData(json.data);
@@ -45,7 +60,7 @@ export default function AnalyticsPage() {
     } finally {
       setLoading(false);
     }
-  }, [period]);
+  }, [period, from, to]);
 
   useEffect(() => {
     setLoading(true);
@@ -81,6 +96,7 @@ export default function AnalyticsPage() {
             Emergency response metrics and operational insights
           </p>
         </div>
+        <div className="flex flex-wrap items-center justify-end gap-2">
         <Select value={period} onValueChange={(value) => setPeriod(value ?? '7')}>
           <SelectTrigger className="w-36 h-9 text-sm">
             <SelectValue />
@@ -90,12 +106,15 @@ export default function AnalyticsPage() {
             <SelectItem value="7">7 Days</SelectItem>
             <SelectItem value="30">30 Days</SelectItem>
             <SelectItem value="90">90 Days</SelectItem>
+            <SelectItem value="custom">Custom</SelectItem>
           </SelectContent>
         </Select>
+        {period === 'custom' && <><input aria-label="Analytics start date" type="date" value={from} onChange={(event) => setFrom(event.target.value)} className="h-9 rounded-md border bg-background px-2 text-sm" /><input aria-label="Analytics end date" type="date" value={to} onChange={(event) => setTo(event.target.value)} className="h-9 rounded-md border bg-background px-2 text-sm" /></>}
+        </div>
       </div>
 
       {/* Stats Row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-4">
         <Card className="p-4">
           <div className="flex items-center gap-2 mb-2">
             <div className="p-1.5 rounded-md bg-destructive/10">
@@ -113,7 +132,7 @@ export default function AnalyticsPage() {
             <span className="text-xs text-muted-foreground">Avg Response</span>
           </div>
           <p className="text-2xl font-bold">
-            {stats?.avgResponseTimeMinutes ? `${Math.round(stats.avgResponseTimeMinutes)}m` : 'N/A'}
+            {stats?.avgResponseTimeMinutes === null || stats?.avgResponseTimeMinutes === undefined ? 'Insufficient data' : `${Math.round(stats.avgResponseTimeMinutes)}m`}
           </p>
         </Card>
         <Card className="p-4">
@@ -124,7 +143,7 @@ export default function AnalyticsPage() {
             <span className="text-xs text-muted-foreground">Fulfillment</span>
           </div>
           <p className="text-2xl font-bold">
-            {stats?.fulfillmentRate ? `${stats.fulfillmentRate.toFixed(1)}%` : '0%'}
+            {stats?.fulfillmentRate === null || stats?.fulfillmentRate === undefined ? 'Insufficient data' : `${stats.fulfillmentRate.toFixed(1)}%`}
           </p>
         </Card>
         <Card className="p-4">
@@ -136,6 +155,14 @@ export default function AnalyticsPage() {
           </div>
           <p className="text-2xl font-bold">{stats?.totalFulfilled || 0}</p>
         </Card>
+        {[
+          ['Median response', stats?.medianResponseTimeMinutes],
+          ['Matching time', stats?.averageMatchingTimeMinutes],
+          ['Fulfillment time', stats?.averageFulfillmentTimeMinutes],
+          ['Escalation rate', stats?.escalationRate],
+          ['Resource response', stats?.resourceResponseRate],
+          ['Resource acceptance', stats?.resourceAcceptanceRate],
+        ].map(([label, value]) => <Card key={String(label)} className="p-4"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-3 text-xl font-bold">{value === null || value === undefined ? 'Insufficient data' : String(label).toLowerCase().includes('rate') || label === 'Escalation rate' ? `${Number(value).toFixed(1)}%` : `${Number(value).toFixed(1)}m`}</p></Card>)}
       </div>
 
       {/* Charts */}
@@ -148,9 +175,9 @@ export default function AnalyticsPage() {
           </h3>
           <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={data?.emergenciesByDay || []}>
+              <AreaChart data={data?.byDay || []}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#888' }} />
+                <XAxis dataKey="_id" tick={{ fontSize: 10, fill: '#888' }} />
                 <YAxis tick={{ fontSize: 10, fill: '#888' }} />
                 <Tooltip
                   contentStyle={{ backgroundColor: '#1a1a2e', border: '1px solid #333', borderRadius: 6, fontSize: 12 }}
@@ -169,12 +196,12 @@ export default function AnalyticsPage() {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data?.bySeverity || []}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                <XAxis dataKey="severity" tick={{ fontSize: 10, fill: '#888' }} />
+                <XAxis dataKey="_id" tick={{ fontSize: 10, fill: '#888' }} />
                 <YAxis tick={{ fontSize: 10, fill: '#888' }} />
                 <Tooltip contentStyle={{ backgroundColor: '#1a1a2e', border: '1px solid #333', borderRadius: 6, fontSize: 12 }} />
                 <Bar dataKey="count" radius={[4, 4, 0, 0]}>
                   {(data?.bySeverity || []).map((entry, idx) => (
-                    <Cell key={idx} fill={entry.severity === 'CRITICAL' ? '#ef4444' : entry.severity === 'HIGH' ? '#f59e0b' : '#3b82f6'} />
+                    <Cell key={idx} fill={entry._id === 'CRITICAL' ? '#ef4444' : entry._id === 'HIGH' ? '#f59e0b' : '#3b82f6'} />
                   ))}
                 </Bar>
               </BarChart>
@@ -190,7 +217,7 @@ export default function AnalyticsPage() {
               <BarChart data={data?.byBloodGroup || []} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                 <XAxis type="number" tick={{ fontSize: 10, fill: '#888' }} />
-                <YAxis dataKey="bloodGroup" type="category" tick={{ fontSize: 10, fill: '#888' }} width={40} />
+                <YAxis dataKey="_id" type="category" tick={{ fontSize: 10, fill: '#888' }} width={40} />
                 <Tooltip contentStyle={{ backgroundColor: '#1a1a2e', border: '1px solid #333', borderRadius: 6, fontSize: 12 }} />
                 <Bar dataKey="count" radius={[0, 4, 4, 0]}>
                   {(data?.byBloodGroup || []).map((_, idx) => (
@@ -209,7 +236,7 @@ export default function AnalyticsPage() {
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
-                  data={data?.byComponent || []}
+                  data={(data?.byComponent || []).map((entry) => ({ component: entry._id, count: entry.count }))}
                   dataKey="count"
                   nameKey="component"
                   cx="50%"
@@ -231,6 +258,31 @@ export default function AnalyticsPage() {
               </PieChart>
             </ResponsiveContainer>
           </div>
+        </Card>
+
+        <Card className="p-4">
+          <h3 className="text-sm font-semibold mb-4">Requests by Status</h3>
+          <div className="h-56"><ResponsiveContainer width="100%" height="100%"><BarChart data={data?.byStatus || []}><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" /><XAxis dataKey="_id" tick={{ fontSize: 9, fill: '#888' }} angle={-25} textAnchor="end" height={55} /><YAxis tick={{ fontSize: 10, fill: '#888' }} /><Tooltip /><Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer></div>
+        </Card>
+
+        <Card className="p-4">
+          <h3 className="text-sm font-semibold mb-4">Response Time Over Time</h3>
+          {!data?.responseByDay?.length ? <p className="flex h-56 items-center justify-center text-sm text-muted-foreground">Insufficient data</p> : <div className="h-56"><ResponsiveContainer width="100%" height="100%"><LineChart data={data.responseByDay}><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" /><XAxis dataKey="_id" tick={{ fontSize: 10, fill: '#888' }} /><YAxis tick={{ fontSize: 10, fill: '#888' }} /><Tooltip /><Line type="monotone" dataKey="averageMinutes" stroke="#f59e0b" strokeWidth={2} dot={false} /></LineChart></ResponsiveContainer></div>}
+        </Card>
+
+        <Card className="p-4">
+          <h3 className="text-sm font-semibold mb-4">Requests by Hour</h3>
+          {!data?.byHour?.length ? <p className="flex h-56 items-center justify-center text-sm text-muted-foreground">Insufficient data</p> : <div className="h-56"><ResponsiveContainer width="100%" height="100%"><AreaChart data={data.byHour}><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" /><XAxis dataKey="_id" tick={{ fontSize: 10, fill: '#888' }} /><YAxis tick={{ fontSize: 10, fill: '#888' }} /><Tooltip /><Area type="monotone" dataKey="count" stroke="#10b981" fill="#10b981" fillOpacity={0.15} /></AreaChart></ResponsiveContainer></div>}
+        </Card>
+
+        <Card className="p-4">
+          <h3 className="text-sm font-semibold mb-4">Demand by Location</h3>
+          {!data?.byLocation?.length ? <p className="flex h-56 items-center justify-center text-sm text-muted-foreground">Insufficient data</p> : <div className="h-56 space-y-2 overflow-y-auto">{data.byLocation.map((entry) => <div key={entry._id} className="flex items-center justify-between border-b py-2 text-sm"><span>{entry._id || 'Unknown location'}</span><Badge variant="outline">{entry.count}</Badge></div>)}</div>}
+        </Card>
+
+        <Card className="p-4">
+          <h3 className="text-sm font-semibold mb-4">Fulfillment by Resource Type</h3>
+          {!data?.fulfillmentByResourceType?.length ? <p className="flex h-56 items-center justify-center text-sm text-muted-foreground">Insufficient data</p> : <div className="h-56 space-y-2">{data.fulfillmentByResourceType.map((entry) => <div key={entry._id} className="flex items-center justify-between border-b py-3 text-sm"><span>{entry._id.replace('_', ' ')}</span><Badge variant="outline">{entry.count} fulfilled</Badge></div>)}</div>}
         </Card>
       </div>
     </div>

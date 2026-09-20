@@ -137,9 +137,9 @@ export default function EmergencyDetailPage() {
   ];
 
   return (
-    <div className="flex flex-col gap-6 max-w-7xl mx-auto p-4 md:p-6 w-full">
+    <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-6 p-1 md:p-2">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-zinc-950/50 p-4 rounded-xl border border-zinc-800">
+      <div className="ops-panel flex flex-col justify-between gap-4 rounded-md p-4 md:flex-row md:items-center">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => router.push('/emergencies')}>
             <ChevronLeft className="w-5 h-5" />
@@ -147,7 +147,7 @@ export default function EmergencyDetailPage() {
           <div>
             <h1 className="text-2xl md:text-3xl font-mono font-bold tracking-tight">{emergency.requestId}</h1>
             <div className="flex items-center gap-2 mt-1">
-              <span className="text-sm text-zinc-400">Elapsed: {elapsedTime(emergency.createdAt)}</span>
+              <span className="font-mono text-sm text-muted-foreground">Elapsed: {elapsedTime(emergency.createdAt)}</span>
             </div>
           </div>
         </div>
@@ -164,8 +164,8 @@ export default function EmergencyDetailPage() {
         
         {/* Left Column - 40% (4/10) */}
         <div className="lg:col-span-4 flex flex-col gap-6">
-          <Card className="bg-zinc-950 border-zinc-800">
-            <CardHeader className="border-b border-zinc-800 bg-zinc-900/20">
+          <Card className="ops-panel">
+            <CardHeader className="border-b border-border/70 bg-muted/20">
               <CardTitle className="flex items-center gap-2">
                 <Activity className="w-5 h-5 text-zinc-400" />
                 Request Information
@@ -240,7 +240,7 @@ export default function EmergencyDetailPage() {
               </div>
             </CardFooter>
           </Card>
-          <Card className="bg-zinc-950 border-zinc-800">
+          <Card className="ops-panel">
             <CardHeader><CardTitle className="text-lg">REQUEST TIMELINE</CardTitle></CardHeader>
             <CardContent className="space-y-3">
               {timeline.map((event) => (
@@ -255,8 +255,8 @@ export default function EmergencyDetailPage() {
 
         {/* Center Column - 30% (3/10) */}
         <div className="lg:col-span-3 flex flex-col gap-6">
-          <Card className="bg-zinc-950 border-zinc-800 h-full flex flex-col">
-            <CardHeader className="border-b border-zinc-800 bg-zinc-900/20 pb-4">
+          <Card className="ops-panel flex h-full flex-col">
+            <CardHeader className="border-b border-border/70 bg-muted/20 pb-4">
               <div className="flex justify-between items-center">
                 <CardTitle className="text-lg">MATCHED RESOURCES</CardTitle>
                 <Badge variant="secondary" className="bg-zinc-800 text-zinc-300">{matches.length}</Badge>
@@ -277,7 +277,7 @@ export default function EmergencyDetailPage() {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: i * 0.1 }}
                     >
-                      <Card className="bg-zinc-900 border-zinc-800 overflow-hidden relative">
+                      <Card className="relative overflow-hidden border-border/70 bg-muted/20">
                         <div className="absolute top-0 left-0 w-1 h-full bg-zinc-800" />
                         <CardContent className="p-4 flex flex-col gap-3">
                           <div className="flex justify-between items-start">
@@ -340,8 +340,8 @@ export default function EmergencyDetailPage() {
 
         {/* Right Column - 30% (3/10) */}
         <div className="lg:col-span-3 flex flex-col gap-6">
-          <Card className="bg-zinc-950 border-zinc-800">
-            <CardHeader className="border-b border-zinc-800 bg-zinc-900/20 pb-4">
+          <Card className="ops-panel">
+            <CardHeader className="border-b border-border/70 bg-muted/20 pb-4">
               <CardTitle className="text-lg flex items-center gap-2">
                 <Clock className="w-5 h-5 text-zinc-400" />
                 REQUEST TIMELINE
