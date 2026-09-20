@@ -58,24 +58,13 @@ function getRandomElement<T>(arr: T[] | readonly T[]): T {
 }
 
 export async function POST(req: NextRequest) {
-  if (process.env.NODE_ENV === 'production' || process.env.DEMO_MODE !== 'true') {
-    return NextResponse.json({ success: false, message: 'Seeding is available only in development demo mode.' }, { status: 403 });
+  if (process.env.NODE_ENV !== 'development' || process.env.DEMO_MODE !== 'true') {
+    return NextResponse.json({ success: false, message: 'Seeding is disabled outside development demo mode.' }, { status: 403 });
   }
 
   const seedSecret = process.env.SEED_SECRET;
-  const hasSeedSecret = Boolean(seedSecret && req.headers.get('x-seed-secret') === seedSecret);
-  if (!hasSeedSecret) {
-    const token = req.cookies.get(COOKIE_NAMES.ACCESS_TOKEN)?.value
-      || req.headers.get('authorization')?.replace(/^Bearer\s+/, '');
-    const decoded = token ? await verifyAccessToken(token) : null;
-    if (!decoded) {
-      return NextResponse.json({ success: false, message: 'Development seed secret or admin authentication is required.' }, { status: 401 });
-    }
-    await connectToDatabase();
-    const admin = await User.findById(decoded.userId).select('_id role isActive verificationStatus');
-    if (!admin || admin.role !== 'ADMIN' || !admin.isActive || admin.verificationStatus !== 'VERIFIED') {
-      return NextResponse.json({ success: false, message: 'Administrator access is required.' }, { status: 403 });
-    }
+  if (!seedSecret || req.headers.get('x-seed-secret') !== seedSecret) {
+    return NextResponse.json({ success: false, message: 'A valid seed secret is required to trigger demo data seeding.' }, { status: 401 });
   }
 
   try {
