@@ -118,4 +118,4 @@ export const GET = withAuth(async (req) => {
     console.error('[nearby-resources]', error);
     return NextResponse.json({ success: false, message: 'Unable to locate nearby resources' }, { status: 500 });
   }
-});
+}, { roles: ['ADMIN', 'HOSPITAL', 'BLOOD_BANK'] });

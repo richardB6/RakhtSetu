@@ -14,7 +14,7 @@ export const GET = withAuth(async (req, context) => {
   } catch (error: any) {
     return NextResponse.json({ success: false, message: error.message }, { status: 404 });
   }
-});
+}, { roles: ['ADMIN', 'HOSPITAL', 'BLOOD_BANK'] });
 
 export const PATCH = withAuth(async (req, context) => {
   try {

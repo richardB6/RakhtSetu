@@ -110,23 +110,17 @@ export async function reserveUnits(
   if (!item) throw new Error('Inventory item not found');
 
   const previous = { availableUnits: item.availableUnits, reservedUnits: item.reservedUnits, status: item.status };
-  const nextState = reserveInventoryUnits({ availableUnits: item.availableUnits, reservedUnits: item.reservedUnits }, units);
+  reserveInventoryUnits({ availableUnits: item.availableUnits, reservedUnits: item.reservedUnits, totalUnits: item.totalUnits }, units);
   const updated = await Inventory.findOneAndUpdate(
     {
       bloodBankId,
       bloodGroup,
       component,
       availableUnits: { $gte: units },
-      reservedUnits: { $lte: item.availableUnits - units },
     },
     {
-      $set: {
-        availableUnits: nextState.availableUnits,
-        reservedUnits: nextState.reservedUnits,
-        totalUnits: nextState.availableUnits + nextState.reservedUnits,
-        lastUpdated: new Date(),
-        status: nextState.availableUnits <= 0 ? 'UNAVAILABLE' : nextState.reservedUnits > 0 ? 'RESERVED' : 'AVAILABLE',
-      },
+      $inc: { availableUnits: -units, reservedUnits: units },
+      $set: { lastUpdated: new Date() },
     },
     { new: true }
   );
@@ -144,6 +138,8 @@ export async function reserveUnits(
     });
     throw new Error('Reservation failed because inventory changed before the update could be applied.');
   }
+  updated.status = updated.availableUnits <= 0 ? 'UNAVAILABLE' : updated.reservedUnits > 0 ? 'RESERVED' : 'AVAILABLE';
+  await updated.save();
 
   await recordInventoryHistory({
     inventoryId: updated._id.toString(),
@@ -188,7 +184,7 @@ export async function releaseReservation(
   if (!item) throw new Error('Inventory item not found');
 
   const previous = { availableUnits: item.availableUnits, reservedUnits: item.reservedUnits, status: item.status };
-  const nextState = releaseInventoryReservation({ availableUnits: item.availableUnits, reservedUnits: item.reservedUnits }, units);
+  releaseInventoryReservation({ availableUnits: item.availableUnits, reservedUnits: item.reservedUnits, totalUnits: item.totalUnits }, units);
   const updated = await Inventory.findOneAndUpdate(
     {
       bloodBankId,
@@ -196,21 +192,15 @@ export async function releaseReservation(
       component,
       reservedUnits: { $gte: units },
     },
-    {
-      $set: {
-        availableUnits: nextState.availableUnits,
-        reservedUnits: nextState.reservedUnits,
-        totalUnits: nextState.availableUnits + nextState.reservedUnits,
-        lastUpdated: new Date(),
-        status: nextState.availableUnits <= 0 ? 'UNAVAILABLE' : nextState.reservedUnits > 0 ? 'RESERVED' : 'AVAILABLE',
-      },
-    },
+    { $inc: { availableUnits: units, reservedUnits: -units }, $set: { lastUpdated: new Date() } },
     { new: true }
   );
 
   if (!updated) {
     throw new Error('Reservation release failed because inventory was no longer eligible.');
   }
+  updated.status = updated.availableUnits <= 0 ? 'UNAVAILABLE' : updated.reservedUnits > 0 ? 'RESERVED' : 'AVAILABLE';
+  await updated.save();
 
   await recordInventoryHistory({
     inventoryId: updated._id.toString(),

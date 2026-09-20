@@ -424,6 +424,7 @@ export async function respondToMatch(matchId: string, userId: string, accept: bo
   if (accept) {
     match.status = 'ACCEPTED';
     match.respondedAt = new Date();
+    await match.save();
 
     await reserveAcceptedMatch(match._id.toString(), { userId, userName: 'Resource User' });
 

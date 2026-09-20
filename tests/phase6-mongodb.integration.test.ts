@@ -202,6 +202,9 @@ test('MongoDB atomic reservations allow only valid concurrent reservations', asy
     second.inventory = first.inventory;
     second.match.resourceId = first.bank._id;
     second.match.resourceUserId = first.user._id;
+    first.match.status = 'ACCEPTED';
+    second.match.status = 'ACCEPTED';
+    await first.match.save();
     await second.match.save();
     const results = await Promise.allSettled([
       reserveAcceptedMatch(first.match._id.toString(), { userId: first.user._id.toString(), userName: first.user.name }),

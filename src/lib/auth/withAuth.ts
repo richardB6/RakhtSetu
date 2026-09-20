@@ -24,7 +24,7 @@ export function withAuth(
 ) {
   return async (
     req: NextRequest,
-    { params }: { params?: Promise<Record<string, string | string[]>> } = {}
+    { params }: { params: Promise<Record<string, string | string[]>> }
   ) => {
     try {
       const token =
@@ -73,7 +73,7 @@ export function withAuth(
         }
       }
 
-      const resolvedParams = params ? await params : {};
+      const resolvedParams = await params;
 
       return await handler(req, {
         user: {

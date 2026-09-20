@@ -24,4 +24,4 @@ export const GET = withAuth(async (_req, context) => {
     })),
   ].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
   return NextResponse.json({ success: true, data: events });
-});
+}, { roles: ['ADMIN', 'HOSPITAL', 'BLOOD_BANK'] });

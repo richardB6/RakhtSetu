@@ -48,6 +48,7 @@ const navItems: NavItem[] = [
     label: 'Emergencies',
     href: '/emergencies',
     icon: AlertTriangle,
+    roles: ['ADMIN', 'HOSPITAL', 'BLOOD_BANK'],
   },
   {
     label: 'Create Emergency',
@@ -59,6 +60,7 @@ const navItems: NavItem[] = [
     label: 'Resource Map',
     href: '/map',
     icon: Map,
+    roles: ['ADMIN', 'HOSPITAL', 'BLOOD_BANK'],
   },
   {
     label: 'Inventory',

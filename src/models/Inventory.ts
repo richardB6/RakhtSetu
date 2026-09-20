@@ -44,10 +44,12 @@ InventorySchema.index({ bloodGroup: 1, component: 1, availableUnits: 1 });
 InventorySchema.index({ availableUnits: 1 });
 
 InventorySchema.pre('save', function () {
-  if (this.availableUnits < 0 || this.reservedUnits < 0 || this.reservedUnits > this.availableUnits) {
-    throw new Error('Inventory quantities must be non-negative and reserved units cannot exceed available units.');
+  if (this.availableUnits < 0 || this.reservedUnits < 0 || this.reservedUnits > this.totalUnits) {
+    throw new Error('Inventory quantities must be non-negative and reserved units cannot exceed total units.');
   }
-  this.totalUnits = this.availableUnits + this.reservedUnits;
+  if (this.totalUnits !== this.availableUnits + this.reservedUnits) {
+    throw new Error('Inventory total must equal available plus reserved units.');
+  }
   if (this.operationallyUnavailable || this.availableUnits <= 0) {
     this.status = 'UNAVAILABLE';
   } else if (this.reservedUnits > 0) {

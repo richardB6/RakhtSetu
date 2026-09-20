@@ -35,7 +35,7 @@ export const GET = withAuth(async (req, context) => {
   } catch (error: any) {
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });
   }
-});
+}, { roles: ['ADMIN', 'HOSPITAL', 'BLOOD_BANK'] });
 
 export const POST = withAuth(async (req, context) => {
   try {
