@@ -1,5 +1,7 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
+export type DonorAvailabilityStatus = 'AVAILABLE' | 'UNAVAILABLE' | 'TEMPORARILY_UNAVAILABLE';
+
 export interface IDonor extends Document {
   userId: mongoose.Types.ObjectId;
   bloodGroup: 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-';
@@ -13,6 +15,7 @@ export interface IDonor extends Document {
     type: string;
     coordinates: number[];
   };
+  availabilityStatus: DonorAvailabilityStatus;
   isAvailable: boolean;
   availabilityRadius: number;
   emergencyNotificationsEnabled: boolean;
@@ -38,6 +41,11 @@ const DonorSchema = new Schema<IDonor>(
       type: { type: String, enum: ['Point'], required: true, default: 'Point' },
       coordinates: { type: [Number], required: true },
     },
+    availabilityStatus: {
+      type: String,
+      enum: ['AVAILABLE', 'UNAVAILABLE', 'TEMPORARILY_UNAVAILABLE'],
+      default: 'AVAILABLE',
+    },
     isAvailable: { type: Boolean, default: true },
     availabilityRadius: { type: Number, default: 10 },
     emergencyNotificationsEnabled: { type: Boolean, default: true },
@@ -50,7 +58,13 @@ const DonorSchema = new Schema<IDonor>(
 );
 
 DonorSchema.index({ userId: 1 }, { unique: true });
-DonorSchema.index({ bloodGroup: 1, isAvailable: 1, location: '2dsphere' });
-DonorSchema.index({ isAvailable: 1 });
+DonorSchema.index({ bloodGroup: 1, availabilityStatus: 1, location: '2dsphere' });
+DonorSchema.index({ isAvailable: 1, emergencyNotificationsEnabled: 1 });
+
+DonorSchema.pre('save', function () {
+  if (this.availabilityStatus) {
+    this.isAvailable = this.availabilityStatus === 'AVAILABLE';
+  }
+});
 
 export const Donor: Model<IDonor> = mongoose.models.Donor || mongoose.model<IDonor>('Donor', DonorSchema);

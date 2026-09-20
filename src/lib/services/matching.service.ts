@@ -188,7 +188,13 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
         spherical: true,
       },
     },
-    { $match: { isOpen: true, componentCapabilities: request.component } },
+    {
+      $match: {
+        isOpen: true,
+        operationalStatus: { $in: ['OPEN', 'LIMITED'] },
+        componentCapabilities: request.component,
+      },
+    },
   ]);
 
   for (const bb of bloodBanks) {
@@ -200,6 +206,7 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
       bloodGroup: { $in: compatibleGroups },
       component: request.component,
       availableUnits: { $gt: 0 },
+      status: { $ne: 'UNAVAILABLE' },
     });
 
     for (const inv of inventoryItems) {
@@ -256,6 +263,7 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
     {
       $match: {
         bloodGroup: { $in: compatibleGroups },
+        availabilityStatus: 'AVAILABLE',
         isAvailable: true,
         emergencyNotificationsEnabled: true,
         $expr: { $lte: ['$distance', { $multiply: ['$availabilityRadius', 1000] }] },

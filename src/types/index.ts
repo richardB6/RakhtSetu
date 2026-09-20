@@ -63,6 +63,8 @@ export interface IHospital extends IAddress {
 
 // ─── Blood Bank ─────────────────────────────────────────────────────────────
 
+export type BloodBankOperationalStatus = 'OPEN' | 'LIMITED' | 'UNAVAILABLE' | 'CLOSED';
+
 export interface IBloodBank extends IAddress {
   _id: string;
   userId: string;
@@ -74,6 +76,7 @@ export interface IBloodBank extends IAddress {
   contactEmail: string;
   operatingHours: string;
   isOpen: boolean;
+  operationalStatus: BloodBankOperationalStatus;
   componentCapabilities: ComponentType[];
   totalResponseCount: number;
   acceptedResponseCount: number;
@@ -84,12 +87,15 @@ export interface IBloodBank extends IAddress {
 
 // ─── Donor ──────────────────────────────────────────────────────────────────
 
+export type DonorAvailabilityStatus = 'AVAILABLE' | 'UNAVAILABLE' | 'TEMPORARILY_UNAVAILABLE';
+
 export interface IDonor extends IAddress {
   _id: string;
   userId: string;
   bloodGroup: BloodGroup;
   dateOfBirth?: Date;
   gender?: 'MALE' | 'FEMALE' | 'OTHER';
+  availabilityStatus: DonorAvailabilityStatus;
   isAvailable: boolean;
   availabilityRadius: number;
   emergencyNotificationsEnabled: boolean;

@@ -1,5 +1,7 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
+export type InventoryStatus = 'AVAILABLE' | 'RESERVED' | 'UNAVAILABLE';
+
 export interface IInventory extends Document {
   bloodBankId: mongoose.Types.ObjectId;
   bloodGroup: 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-';
@@ -7,6 +9,7 @@ export interface IInventory extends Document {
   availableUnits: number;
   reservedUnits: number;
   totalUnits: number;
+  status: InventoryStatus;
   lastUpdated: Date;
   lastVerified?: Date;
   expiryAlertThresholdDays?: number;
@@ -24,6 +27,7 @@ const InventorySchema = new Schema<IInventory>(
     availableUnits: { type: Number, default: 0, min: 0 },
     reservedUnits: { type: Number, default: 0, min: 0 },
     totalUnits: { type: Number, default: 0 },
+    status: { type: String, enum: ['AVAILABLE', 'RESERVED', 'UNAVAILABLE'], default: 'AVAILABLE' },
     lastUpdated: { type: Date, required: true },
     lastVerified: { type: Date },
     expiryAlertThresholdDays: { type: Number },
@@ -39,6 +43,13 @@ InventorySchema.index({ availableUnits: 1 });
 
 InventorySchema.pre('save', function () {
   this.totalUnits = this.availableUnits + this.reservedUnits;
+  if (this.availableUnits <= 0) {
+    this.status = 'UNAVAILABLE';
+  } else if (this.reservedUnits > 0) {
+    this.status = 'RESERVED';
+  } else {
+    this.status = 'AVAILABLE';
+  }
 });
 
 export const Inventory: Model<IInventory> = mongoose.models.Inventory || mongoose.model<IInventory>('Inventory', InventorySchema);

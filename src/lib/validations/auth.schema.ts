@@ -50,6 +50,7 @@ export const bloodBankProfileSchema = z.object({
   contactEmail: z.string().email(),
   operatingHours: z.string().trim().min(1),
   isOpen: z.boolean().optional(),
+  operationalStatus: z.enum(['OPEN', 'LIMITED', 'UNAVAILABLE', 'CLOSED']).optional(),
   componentCapabilities: z.array(z.string()).optional(),
 }).strict();
 
@@ -62,6 +63,7 @@ export const donorProfileSchema = z.object({
   state: z.string().trim().min(1),
   pincode: z.string().trim().min(4),
   location: locationSchema,
+  availabilityStatus: z.enum(['AVAILABLE', 'UNAVAILABLE', 'TEMPORARILY_UNAVAILABLE']).optional(),
   isAvailable: z.boolean().optional(),
   availabilityRadius: z.number().positive().optional(),
   emergencyNotificationsEnabled: z.boolean().optional(),

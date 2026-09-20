@@ -1,5 +1,7 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
+export type BloodBankOperationalStatus = 'OPEN' | 'LIMITED' | 'UNAVAILABLE' | 'CLOSED';
+
 export interface IBloodBank extends Document {
   userId: mongoose.Types.ObjectId;
   name: string;
@@ -18,6 +20,7 @@ export interface IBloodBank extends Document {
   contactEmail: string;
   operatingHours: string;
   isOpen: boolean;
+  operationalStatus: BloodBankOperationalStatus;
   componentCapabilities: string[];
   totalResponseCount: number;
   acceptedResponseCount: number;
@@ -45,6 +48,11 @@ const BloodBankSchema = new Schema<IBloodBank>(
     contactEmail: { type: String, required: true },
     operatingHours: { type: String, required: true },
     isOpen: { type: Boolean, default: true },
+    operationalStatus: {
+      type: String,
+      enum: ['OPEN', 'LIMITED', 'UNAVAILABLE', 'CLOSED'],
+      default: 'OPEN',
+    },
     componentCapabilities: [{ type: String }],
     totalResponseCount: { type: Number, default: 0 },
     acceptedResponseCount: { type: Number, default: 0 },
@@ -55,7 +63,13 @@ const BloodBankSchema = new Schema<IBloodBank>(
 
 BloodBankSchema.index({ userId: 1 }, { unique: true });
 BloodBankSchema.index({ location: '2dsphere' });
-BloodBankSchema.index({ isOpen: 1, location: '2dsphere' });
+BloodBankSchema.index({ isOpen: 1, operationalStatus: 1, location: '2dsphere' });
 BloodBankSchema.index({ licenseNumber: 1 }, { unique: true });
+
+BloodBankSchema.pre('save', function () {
+  if (this.operationalStatus) {
+    this.isOpen = ['OPEN', 'LIMITED'].includes(this.operationalStatus);
+  }
+});
 
 export const BloodBank: Model<IBloodBank> = mongoose.models.BloodBank || mongoose.model<IBloodBank>('BloodBank', BloodBankSchema);
