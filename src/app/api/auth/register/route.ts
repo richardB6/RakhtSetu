@@ -1,19 +1,51 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/db/mongodb';
 import { User } from '@/models/User';
+import { Hospital } from '@/models/Hospital';
+import { BloodBank } from '@/models/BloodBank';
+import { Donor } from '@/models/Donor';
 import { hashPassword } from '@/lib/auth/password';
 import { signAccessToken, signRefreshToken } from '@/lib/auth/jwt';
 import { setAuthCookies } from '@/lib/auth/cookies';
-import { registerSchema } from '@/lib/validations/auth.schema';
-import { validateRequestBody } from '@/lib/validations/common';
+import {
+  registerSchema,
+  hospitalProfileSchema,
+  bloodBankProfileSchema,
+  donorProfileSchema,
+} from '@/lib/validations/auth.schema';
+import { formatZodErrors, validateRequestBody } from '@/lib/validations/common';
 
 export async function POST(req: NextRequest) {
   try {
     const validation = await validateRequestBody(req, registerSchema);
     if (!validation.success) return validation.response;
 
-    const { email, password, name, phone, role } = validation.data;
+    const { email, password, name, phone, role, profile } = validation.data;
+    if (role === 'ADMIN') {
+      return NextResponse.json(
+        { success: false, message: 'Administrator accounts can only be created through the verification workflow.' },
+        { status: 403 }
+      );
+    }
 
+    if (!profile) {
+      return NextResponse.json(
+        { success: false, message: 'A role-specific profile is required.' },
+        { status: 422 }
+      );
+    }
+    const validationResult =
+      role === 'HOSPITAL'
+        ? hospitalProfileSchema.safeParse(profile)
+        : role === 'BLOOD_BANK'
+          ? bloodBankProfileSchema.safeParse(profile)
+          : donorProfileSchema.safeParse(profile);
+    if (!validationResult.success) {
+      return NextResponse.json(
+        { success: false, message: 'Invalid role-specific profile.', errors: formatZodErrors(validationResult.error) },
+        { status: 422 }
+      );
+    }
     await connectToDatabase();
 
     // Check if user already exists
@@ -35,8 +67,31 @@ export async function POST(req: NextRequest) {
       name,
       phone,
       role,
-      verificationStatus: role === 'ADMIN' ? 'VERIFIED' : 'PENDING',
+      verificationStatus: 'PENDING',
     });
+
+    let profileDocument;
+    if (role === 'HOSPITAL') {
+      const parsedProfile = hospitalProfileSchema.safeParse(profile);
+      if (!parsedProfile.success) {
+        return NextResponse.json({ success: false, message: 'Invalid role-specific profile.', errors: formatZodErrors(parsedProfile.error) }, { status: 422 });
+      }
+      profileDocument = await Hospital.create({ ...parsedProfile.data, userId: user._id });
+    } else if (role === 'BLOOD_BANK') {
+      const parsedProfile = bloodBankProfileSchema.safeParse(profile);
+      if (!parsedProfile.success) {
+        return NextResponse.json({ success: false, message: 'Invalid role-specific profile.', errors: formatZodErrors(parsedProfile.error) }, { status: 422 });
+      }
+      profileDocument = await BloodBank.create({ ...parsedProfile.data, userId: user._id });
+    } else {
+      const parsedProfile = donorProfileSchema.safeParse(profile);
+      if (!parsedProfile.success) {
+        return NextResponse.json({ success: false, message: 'Invalid role-specific profile.', errors: formatZodErrors(parsedProfile.error) }, { status: 422 });
+      }
+      profileDocument = await Donor.create({ ...parsedProfile.data, userId: user._id });
+    }
+    user.profileId = profileDocument._id;
+    await user.save();
 
     // Sign tokens
     const accessToken = await signAccessToken({
@@ -62,6 +117,7 @@ export async function POST(req: NextRequest) {
             name: user.name,
             role: user.role,
             verificationStatus: user.verificationStatus,
+            profileId: user.profileId,
           },
         },
       },

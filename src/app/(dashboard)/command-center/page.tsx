@@ -277,7 +277,7 @@ export default function CommandCenterPage() {
                           <Link href={`/emergencies/${req._id}`}>
                             <Badge className={cn(
                               "text-[10px] tracking-wide",
-                              req.status === 'CRITICAL' || req.status === 'OPEN' ? 'bg-destructive hover:bg-destructive/90 text-destructive-foreground' :
+                              req.severity === 'CRITICAL' ? 'bg-destructive hover:bg-destructive/90 text-destructive-foreground' :
                               req.status === 'MATCHING' ? 'bg-blue-500 hover:bg-blue-600 text-white' :
                               req.status === 'FULFILLED' ? 'bg-green-500 hover:bg-green-600 text-white' :
                               'bg-muted text-muted-foreground'

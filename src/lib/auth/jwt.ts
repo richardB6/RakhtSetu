@@ -1,11 +1,8 @@
 import { SignJWT, jwtVerify, JWTPayload } from 'jose';
+import { env } from '@/lib/config/env';
 
-const JWT_ACCESS_SECRET = new TextEncoder().encode(
-  process.env.JWT_ACCESS_SECRET || 'fallback-access-secret-min-32-chars-long!!'
-);
-const JWT_REFRESH_SECRET = new TextEncoder().encode(
-  process.env.JWT_REFRESH_SECRET || 'fallback-refresh-secret-min-32-chars-long!!'
-);
+const JWT_ACCESS_SECRET = new TextEncoder().encode(env.JWT_ACCESS_SECRET);
+const JWT_REFRESH_SECRET = new TextEncoder().encode(env.JWT_REFRESH_SECRET);
 
 export type UserRole = 'HOSPITAL' | 'BLOOD_BANK' | 'DONOR' | 'ADMIN';
 

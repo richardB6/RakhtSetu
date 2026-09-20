@@ -81,7 +81,7 @@ export default function AnalyticsPage() {
             Emergency response metrics and operational insights
           </p>
         </div>
-        <Select value={period} onValueChange={setPeriod}>
+        <Select value={period} onValueChange={(value) => setPeriod(value ?? '7')}>
           <SelectTrigger className="w-36 h-9 text-sm">
             <SelectValue />
           </SelectTrigger>
@@ -215,7 +215,11 @@ export default function AnalyticsPage() {
                   cx="50%"
                   cy="50%"
                   outerRadius={80}
-                  label={({ component, percent }) => `${component} ${(percent * 100).toFixed(0)}%`}
+                  label={(props) => {
+                    const component = 'component' in props ? String(props.component) : '';
+                    const percent = props.percent ?? 0;
+                    return `${component} ${(percent * 100).toFixed(0)}%`;
+                  }}
                   labelLine={false}
                   fontSize={10}
                 >

@@ -3,6 +3,28 @@ import { Notification } from '@/models/Notification';
 import mongoose from 'mongoose';
 import { NotificationType, NotificationSeverity } from '@/types';
 
+/** The only delivery adapter currently enabled. It is deliberately persisted
+ * as an inbox record rather than pretending to send email/SMS/push. */
+export async function deliverInAppNotification(data: {
+  userId: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  severity: NotificationSeverity;
+  referenceType?: string;
+  referenceId?: string;
+}) {
+  const priority = { CRITICAL: 100, HIGH: 75, NORMAL: 50, INFO: 25 }[data.severity];
+  return Notification.create({
+    ...data,
+    priority,
+    channel: 'IN_APP',
+    deliveryStatus: 'DELIVERED',
+    deliveryNote: 'Delivered to the internal notification inbox',
+    isRead: false,
+  });
+}
+
 export async function createNotification(data: {
   userId: string;
   type: NotificationType;
@@ -14,15 +36,7 @@ export async function createNotification(data: {
 }) {
   await connectToDatabase();
 
-  const notificationData = {
-    ...data,
-    channel: 'IN_APP',
-    deliveryStatus: 'DELIVERED',
-    isRead: false
-  };
-
-  const notification = await Notification.create(notificationData);
-  return notification;
+  return deliverInAppNotification(data);
 }
 
 export async function getNotifications(userId: string, filters?: {
@@ -45,7 +59,7 @@ export async function getNotifications(userId: string, filters?: {
   const skip = (page - 1) * limit;
 
   const notifications = await Notification.find(query)
-    .sort({ createdAt: -1 })
+    .sort({ priority: -1, createdAt: -1 })
     .skip(skip)
     .limit(limit);
 

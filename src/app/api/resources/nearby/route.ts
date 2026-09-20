@@ -1,68 +1,112 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth/withAuth';
 import { connectToDatabase } from '@/lib/db/mongodb';
 import { BloodBank } from '@/models/BloodBank';
 import { Donor } from '@/models/Donor';
+import { EmergencyRequest } from '@/models/EmergencyRequest';
+import { getCompatibleDonorGroups, BloodGroup, ComponentType } from '@/lib/engine/compatibility';
 
-export const GET = withAuth(async (req, context) => {
+const RADII = [10, 25, 50, 100];
+const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'] as const;
+
+function validCoordinate(value: number, min: number, max: number) {
+  return Number.isFinite(value) && value >= min && value <= max;
+}
+
+export const GET = withAuth(async (req) => {
   try {
-    const { searchParams } = new URL(req.url);
-    const latStr = searchParams.get('lat');
-    const lngStr = searchParams.get('lng');
-    const radiusKmStr = searchParams.get('radiusKm') || '10';
-    const bloodGroup = searchParams.get('bloodGroup');
-    const component = searchParams.get('component');
-
-    if (!latStr || !lngStr) {
-      return NextResponse.json({ success: false, message: 'lat and lng are required' }, { status: 400 });
-    }
-
-    const lat = parseFloat(latStr);
-    const lng = parseFloat(lngStr);
-    const radiusKm = parseFloat(radiusKmStr);
+    const params = new URL(req.url).searchParams;
+    let lat = Number(params.get('lat'));
+    let lng = Number(params.get('lng'));
+    const emergencyId = params.get('emergencyId');
+    const bloodGroup = params.get('bloodGroup');
+    const component = params.get('component');
+    const requestedRadius = Number(params.get('radiusKm') || 10);
+    const radiusKm = RADII.find((radius) => radius >= requestedRadius) || RADII[RADII.length - 1];
 
     await connectToDatabase();
-
-    const bloodBankQuery: any = { isOpen: true };
-    if (bloodGroup) {
-      // Basic filtering, actual inventory filtering requires lookup but this is a simplified version
-      // Or we can leave it general.
+    if ((!validCoordinate(lat, -90, 90) || !validCoordinate(lng, -180, 180)) && emergencyId) {
+      const emergency = await EmergencyRequest.findById(emergencyId).select('location');
+      if (emergency?.location?.coordinates?.length === 2) {
+        [lng, lat] = emergency.location.coordinates;
+      }
+    }
+    if (!validCoordinate(lat, -90, 90) || !validCoordinate(lng, -180, 180)) {
+      return NextResponse.json({ success: false, message: 'A valid location or emergencyId is required' }, { status: 400 });
     }
 
-    const bloodBanks = await BloodBank.aggregate([
-      {
-        $geoNear: {
-          near: { type: 'Point', coordinates: [lng, lat] },
-          distanceField: 'distance',
-          maxDistance: radiusKm * 1000,
-          spherical: true,
-        },
-      },
-      { $match: bloodBankQuery }
-    ]);
+    const near = { type: 'Point' as const, coordinates: [lng, lat] as [number, number] };
+    const compatibleGroups = bloodGroup && BLOOD_GROUPS.includes(bloodGroup as (typeof BLOOD_GROUPS)[number]) && component
+      ? getCompatibleDonorGroups(bloodGroup as BloodGroup, component as ComponentType)
+      : undefined;
+    const bankMatch: Record<string, unknown> = { isOpen: true };
+    if (component) bankMatch.componentCapabilities = component;
+    const donorMatch: Record<string, unknown> = { isAvailable: true };
+    if (compatibleGroups?.length) donorMatch.bloodGroup = { $in: compatibleGroups };
 
-    const donorQuery: any = { isAvailable: true };
-    if (bloodGroup) donorQuery.bloodGroup = bloodGroup;
-
-    const donors = await Donor.aggregate([
-      {
-        $geoNear: {
-          near: { type: 'Point', coordinates: [lng, lat] },
-          distanceField: 'distance',
-          maxDistance: radiusKm * 1000,
-          spherical: true,
-        },
-      },
-      { $match: donorQuery }
+    const [banks, donors] = await Promise.all([
+      BloodBank.aggregate([
+        { $geoNear: { near, distanceField: 'distanceMeters', maxDistance: radiusKm * 1000, spherical: true } },
+        { $match: bankMatch },
+        { $lookup: { from: 'inventories', let: { bankId: '$_id' }, pipeline: [
+          { $match: { $expr: { $eq: ['$bloodBankId', '$$bankId'] } } },
+          ...(compatibleGroups?.length ? [{ $match: { bloodGroup: { $in: compatibleGroups } } }] : []),
+          ...(component ? [{ $match: { component } }] : []),
+          { $project: { _id: 0, bloodGroup: 1, component: 1, availableUnits: 1, lastUpdated: 1, lastVerified: 1 } },
+        ], as: 'inventory' } },
+      ]),
+      Donor.aggregate([
+        { $geoNear: { near, distanceField: 'distanceMeters', maxDistance: radiusKm * 1000, spherical: true } },
+        { $match: donorMatch },
+        { $lookup: { from: 'users', localField: 'userId', foreignField: '_id', as: 'user' } },
+        { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
+        { $project: { userId: 1, bloodGroup: 1, location: 1, city: 1, state: 1, isAvailable: 1, totalDonations: 1, acceptedResponseCount: 1, distanceMeters: 1, 'user.name': 1, 'user.verificationStatus': 1 } },
+      ]),
     ]);
 
     const resources = [
-      ...bloodBanks.map(bb => ({ ...bb, type: 'BLOOD_BANK', distanceKm: bb.distance / 1000 })),
-      ...donors.map(d => ({ ...d, type: 'DONOR', distanceKm: d.distance / 1000 }))
-    ].sort((a, b) => a.distanceKm - b.distanceKm);
+      ...banks.map((bank) => {
+        const availableQuantity = (bank.inventory || [])
+          .filter((item: { availableUnits?: number }) => (item.availableUnits || 0) > 0)
+          .reduce((sum: number, item: { availableUnits?: number }) => sum + (item.availableUnits || 0), 0);
+        const verified = Boolean(bank.licenseNumber);
+        return {
+          id: bank._id.toString(), type: 'BLOOD_BANK', name: bank.name, bloodGroup,
+          component, lat: bank.location.coordinates[1], lng: bank.location.coordinates[0],
+          address: bank.address, city: bank.city, operatingHours: bank.operatingHours,
+          availability: bank.isOpen ? 'AVAILABLE' : 'UNAVAILABLE', availableQuantity,
+          distanceKm: Number((bank.distanceMeters / 1000).toFixed(1)), isVerified: verified,
+          verificationLabel: verified ? 'Licensed' : 'Verification pending',
+          score: Math.round(Math.min(100, 60 + (verified ? 20 : 0) + Math.min(20, availableQuantity))),
+          inventory: bank.inventory,
+        };
+      }),
+      ...donors.map((donor) => {
+        const verified = donor.user?.verificationStatus === 'VERIFIED';
+        const score = Math.round(Math.min(100, 45 + (verified ? 25 : 0) + Math.min(20, donor.totalDonations || 0) + (donor.isAvailable ? 10 : 0)));
+        return {
+          id: donor._id.toString(), type: 'DONOR', name: donor.user?.name || 'Verified donor',
+          bloodGroup: donor.bloodGroup, lat: donor.location.coordinates[1], lng: donor.location.coordinates[0],
+          address: donor.city, availability: donor.isAvailable ? 'AVAILABLE' : 'UNAVAILABLE',
+          availableQuantity: 1, distanceKm: Number((donor.distanceMeters / 1000).toFixed(1)),
+          isVerified: verified, verificationLabel: verified ? 'Identity verified' : 'Verification pending',
+          score, totalDonations: donor.totalDonations || 0,
+        };
+      }),
+    ].sort((a, b) => b.score - a.score || a.distanceKm - b.distanceKm);
 
-    return NextResponse.json({ success: true, data: resources });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    const radiusIndex = RADII.indexOf(radiusKm);
+    return NextResponse.json({
+      success: true, data: resources, meta: {
+        center: { lat, lng }, radiusKm, requestedRadiusKm: requestedRadius,
+        radiusState: resources.length ? 'FOUND' : radiusIndex < RADII.length - 1 ? 'EXPAND_AVAILABLE' : 'NO_RESULTS',
+        nextRadiusKm: resources.length || radiusIndex === RADII.length - 1 ? null : RADII[radiusIndex + 1],
+        availableCount: resources.filter((resource) => resource.availability === 'AVAILABLE').length,
+        source: 'mongodb',
+      },
+    });
+  } catch (error) {
+    console.error('[nearby-resources]', error);
+    return NextResponse.json({ success: false, message: 'Unable to locate nearby resources' }, { status: 500 });
   }
 });

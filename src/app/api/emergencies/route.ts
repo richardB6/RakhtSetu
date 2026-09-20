@@ -13,6 +13,7 @@ export const GET = withAuth(async (req, context) => {
     const bloodGroup = searchParams.get('bloodGroup');
     const component = searchParams.get('component');
     const hospitalId = searchParams.get('hospitalId');
+    const search = searchParams.get('search');
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
 
@@ -22,6 +23,12 @@ export const GET = withAuth(async (req, context) => {
     if (bloodGroup) filters.bloodGroup = bloodGroup;
     if (component) filters.component = component;
     if (hospitalId) filters.hospitalId = hospitalId;
+    if (search) filters.search = search;
+    if (context.user.role === 'HOSPITAL') {
+      const hospital = await Hospital.findOne({ userId: context.user.userId }).select('_id');
+      if (!hospital) return NextResponse.json({ success: false, message: 'Hospital profile not found' }, { status: 404 });
+      filters.hospitalId = hospital._id.toString();
+    }
 
     const result = await getEmergencyRequests(filters);
     return NextResponse.json({ success: true, ...result });
@@ -41,7 +48,7 @@ export const POST = withAuth(async (req, context) => {
       return NextResponse.json({ success: false, message: 'Hospital profile not found' }, { status: 404 });
     }
 
-    const result = await createEmergencyRequest(validatedData, hospital._id, context.user.userId);
+    const result = await createEmergencyRequest(validatedData, hospital._id.toString(), context.user.userId);
     return NextResponse.json({ success: true, data: result }, { status: 201 });
   } catch (error: any) {
     if (error.name === 'ZodError') {

@@ -127,6 +127,10 @@ export interface IEmergencyRequest {
   searchRadiusKm: number;
   matchCount: number;
   responseCount: number;
+  responseTimeoutMinutes: number;
+  responseDeadline?: Date;
+  escalationLevel: number;
+  selectedMatchId?: string;
   matchingStartedAt?: Date;
   firstResponseAt?: Date;
   fulfilledAt?: Date;
@@ -218,6 +222,7 @@ export interface INotification {
   title: string;
   message: string;
   severity: NotificationSeverity;
+  priority: number;
   referenceType?: string;
   referenceId?: string;
   channel: 'IN_APP' | 'EMAIL' | 'SMS' | 'PUSH';

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -33,6 +34,7 @@ export default function EmergencyDetailPage() {
 
   const [emergency, setEmergency] = useState<IEmergencyRequest | null>(null);
   const [matches, setMatches] = useState<IMatch[]>([]);
+  const [timeline, setTimeline] = useState<Array<{ _id: string; action: string; description: string; createdAt: string }>>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchEmergency = async () => {
@@ -63,14 +65,24 @@ export default function EmergencyDetailPage() {
     }
   };
 
+  const fetchTimeline = async () => {
+    const res = await fetch(`/api/emergencies/${id}/timeline`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success) setTimeline(data.data);
+    }
+  };
+
   useEffect(() => {
     fetchEmergency();
     fetchMatches();
+    fetchTimeline();
     setLoading(false);
 
     const interval = setInterval(() => {
       fetchEmergency();
       fetchMatches();
+      fetchTimeline();
     }, 5000);
 
     return () => clearInterval(interval);
@@ -78,6 +90,18 @@ export default function EmergencyDetailPage() {
 
   const handleRunMatching = () => {
     router.push(`/emergencies/${id}/matching`);
+  };
+
+  const updateStatus = async (status: string) => {
+    const res = await fetch(`/api/emergencies/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status, cancellationReason: status === 'CANCELLED' ? 'Cancelled by hospital operator' : undefined }),
+    });
+    if (res.ok) {
+      await fetchEmergency();
+      await fetchTimeline();
+    }
   };
 
   const handleMatchAction = async (matchId: string, action: 'accept' | 'decline') => {
@@ -183,6 +207,9 @@ export default function EmergencyDetailPage() {
                   <p className="font-medium">{emergency.hospital?.name || 'Hospital'}</p>
                   <p className="text-sm text-zinc-300 mt-0.5">{emergency.contactPerson} • {emergency.contactPhone}</p>
                   <p className="text-sm text-zinc-400 mt-1 flex items-start gap-1"><MapPin className="w-4 h-4 shrink-0 mt-0.5"/> {emergency.address}, {emergency.city}</p>
+                  <Link href={`/map?emergencyId=${encodeURIComponent(emergency._id)}`} className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-blue-400 hover:text-blue-300">
+                    <MapPin className="h-4 w-4" /> View nearby resources
+                  </Link>
                 </div>
 
                 {emergency.notes && (
@@ -201,17 +228,28 @@ export default function EmergencyDetailPage() {
               )}
               <div className="flex gap-3 w-full">
                 {(user?.role === 'HOSPITAL' || user?.role === 'ADMIN') && emergency.status !== 'CANCELLED' && emergency.status !== 'FULFILLED' && (
-                  <Button variant="outline" className="w-full text-red-500 hover:text-red-400 hover:bg-red-500/10 border-red-500/20">
+                  <Button onClick={() => updateStatus('CANCELLED')} variant="outline" className="w-full text-red-500 hover:text-red-400 hover:bg-red-500/10 border-red-500/20">
                     Cancel Request
                   </Button>
                 )}
-                {(user?.role === 'HOSPITAL' || user?.role === 'ADMIN') && ['RESOURCE_SELECTED', 'RESERVED', 'IN_TRANSIT'].includes(emergency.status) && (
-                  <Button variant="outline" className="w-full text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10 border-emerald-500/20">
+                {(user?.role === 'HOSPITAL' || user?.role === 'ADMIN') && ['RESOURCE_SELECTED', 'RESERVED', 'PROCESSING', 'IN_TRANSIT'].includes(emergency.status) && (
+                  <Button onClick={() => updateStatus('FULFILLED')} variant="outline" className="w-full text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10 border-emerald-500/20">
                     Mark Fulfilled
                   </Button>
                 )}
               </div>
             </CardFooter>
+          </Card>
+          <Card className="bg-zinc-950 border-zinc-800">
+            <CardHeader><CardTitle className="text-lg">REQUEST TIMELINE</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              {timeline.map((event) => (
+                <div key={event._id} className="border-l-2 border-red-500/40 pl-3">
+                  <p className="text-sm font-medium">{event.description}</p>
+                  <p className="text-xs text-zinc-500">{new Date(event.createdAt).toLocaleString()}</p>
+                </div>
+              ))}
+            </CardContent>
           </Card>
         </div>
 

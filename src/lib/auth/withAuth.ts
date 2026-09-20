@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAccessToken, UserTokenPayload, UserRole } from './jwt';
 import { COOKIE_NAMES } from './cookies';
+import { connectToDatabase } from '@/lib/db/mongodb';
+import { User } from '@/models/User';
 
 export interface AuthenticatedContext {
   user: UserTokenPayload;
@@ -44,8 +46,23 @@ export function withAuth(
         );
       }
 
+      await connectToDatabase();
+      const currentUser = await User.findById(decoded.userId).select(
+        '_id email name role isActive verificationStatus'
+      );
+      if (
+        !currentUser ||
+        !currentUser.isActive ||
+        currentUser.verificationStatus === 'SUSPENDED'
+      ) {
+        return NextResponse.json(
+          { success: false, message: 'Account is inactive or suspended.' },
+          { status: 403 }
+        );
+      }
+
       if (options.roles && options.roles.length > 0) {
-        if (!options.roles.includes(decoded.role)) {
+        if (!options.roles.includes(currentUser.role)) {
           return NextResponse.json(
             {
               success: false,
@@ -59,7 +76,13 @@ export function withAuth(
       const resolvedParams = params ? await params : {};
 
       return await handler(req, {
-        user: decoded,
+        user: {
+          ...decoded,
+          userId: currentUser._id.toString(),
+          email: currentUser.email,
+          name: currentUser.name,
+          role: currentUser.role,
+        },
         params: resolvedParams,
       });
     } catch (error) {

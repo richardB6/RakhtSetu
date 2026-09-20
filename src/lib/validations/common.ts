@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z, ZodError } from 'zod';
 
 export function formatZodErrors(error: ZodError) {
-  return error.errors.reduce<Record<string, string[]>>((acc, curr) => {
+  return error.issues.reduce<Record<string, string[]>>((acc, curr) => {
     const field = curr.path.join('.') || 'general';
     if (!acc[field]) acc[field] = [];
     acc[field].push(curr.message);

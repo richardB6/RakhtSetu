@@ -19,7 +19,7 @@ export const updateEmergencyStatusSchema = z.object({
   status: z.enum([
     'DRAFT', 'CREATED', 'MATCHING', 'RESOURCES_NOTIFIED',
     'RESPONSES_RECEIVED', 'RESOURCE_SELECTED', 'RESERVED',
-    'IN_TRANSIT', 'FULFILLED', 'CANCELLED', 'EXPIRED', 'ESCALATED',
+    'PROCESSING', 'IN_TRANSIT', 'FULFILLED', 'CANCELLED', 'EXPIRED', 'ESCALATED',
   ] as [string, ...string[]]),
   cancellationReason: z.string().optional(),
 });

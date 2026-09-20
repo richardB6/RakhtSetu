@@ -78,7 +78,7 @@ export default function AuditLogsPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <Select value={filterAction} onValueChange={(v) => { setFilterAction(v); setPage(1); }}>
+          <Select value={filterAction} onValueChange={(v) => { setFilterAction(v ?? ''); setPage(1); }}>
             <SelectTrigger className="w-44 h-9 text-sm">
               <SelectValue placeholder="Filter by action" />
             </SelectTrigger>
@@ -93,7 +93,7 @@ export default function AuditLogsPage() {
               <SelectItem value="ENTITY_VERIFIED">Entity Verified</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={filterEntity} onValueChange={(v) => { setFilterEntity(v); setPage(1); }}>
+          <Select value={filterEntity} onValueChange={(v) => { setFilterEntity(v ?? ''); setPage(1); }}>
             <SelectTrigger className="w-44 h-9 text-sm">
               <SelectValue placeholder="Filter by entity" />
             </SelectTrigger>

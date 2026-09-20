@@ -1,6 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
+import { useSearchParams } from 'next/navigation';
 
 const ResourceMap = dynamic(() => import('./ResourceMap'), {
   ssr: false,
@@ -15,5 +16,6 @@ const ResourceMap = dynamic(() => import('./ResourceMap'), {
 });
 
 export default function MapWrapper() {
-  return <ResourceMap />;
+  const searchParams = useSearchParams();
+  return <ResourceMap emergencyId={searchParams.get('emergencyId') || undefined} />;
 }

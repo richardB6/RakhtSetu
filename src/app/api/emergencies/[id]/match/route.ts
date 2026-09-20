@@ -8,6 +8,8 @@ export const POST = withAuth(async (req, context) => {
     const result = await runMatchingEngine(id, context.user.userId);
     return NextResponse.json({ success: true, data: result });
   } catch (error: any) {
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Matching failed';
+    const status = /not found|not valid|cannot match|already /.test(message.toLowerCase()) ? 400 : 500;
+    return NextResponse.json({ success: false, message }, { status });
   }
 }, { roles: ['HOSPITAL', 'ADMIN'] });

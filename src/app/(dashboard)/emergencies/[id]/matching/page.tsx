@@ -192,17 +192,33 @@ export default function LiveMatchingPage() {
                         </div>
                         <div>
                           <p className="font-medium text-zinc-200">
-                            {match.resourceType === 'BLOOD_BANK' ? match.bloodBank?.name || 'Blood Bank' : match.donor?.userId || 'Donor'}
+                            {match.resourceType === 'BLOOD_BANK' ? match.bloodBank?.name || 'Blood Bank' : match.resourceUser?.name || 'Donor'}
                           </p>
                           <div className="flex gap-2 mt-1">
                             <Badge variant="outline" className="text-[10px] uppercase text-zinc-400 bg-zinc-900">{match.resourceType.replace('_', ' ')}</Badge>
                             <span className="text-xs text-zinc-500">{match.distanceKm.toFixed(1)} km away</span>
+                            <Badge variant="outline" className="text-[10px] text-zinc-400">
+                              {match.isVerified ? 'VERIFIED' : 'PENDING VERIFICATION'}
+                            </Badge>
                           </div>
                         </div>
                       </div>
-                      <div className={`text-2xl font-bold font-mono ${getScoreColor(match.score)}`}>
-                        {match.score}
+                      <div className="text-right">
+                        <div className={`text-2xl font-bold font-mono ${getScoreColor(match.score)}`}>
+                          {match.score}
+                        </div>
+                        <div className="text-[10px] uppercase tracking-wide text-zinc-500">operational score</div>
                       </div>
+                    </div>
+                    <div className="border-t border-zinc-800 px-4 py-3 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-zinc-400">
+                      <span>Compatibility: <strong className="text-zinc-200">{match.compatibilityType.replace('_', ' ')}</strong></span>
+                      <span>Available: <strong className="text-zinc-200">{match.availableQuantity} unit(s)</strong></span>
+                      <span>Response: <strong className="text-zinc-200">{match.status}</strong></span>
+                      <span>Urgency factor: <strong className="text-zinc-200">{match.factors.urgencyScore}/100</strong></span>
+                    </div>
+                    <div className="px-4 pb-4">
+                      <p className="text-xs uppercase tracking-wide text-zinc-500 mb-1">Why this resource</p>
+                      <p className="text-sm text-zinc-300">{match.reasons.join(' • ')}</p>
                     </div>
                   </Card>
                 </motion.div>

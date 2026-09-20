@@ -105,7 +105,7 @@ export default function EmergenciesListPage() {
           />
         </div>
         
-        <Select value={severity} onValueChange={setSeverity}>
+        <Select value={severity} onValueChange={(value) => setSeverity(value ?? '')}>
           <SelectTrigger className="w-[140px]"><SelectValue placeholder="Severity" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="ALL">All Severities</SelectItem>
@@ -113,7 +113,7 @@ export default function EmergenciesListPage() {
           </SelectContent>
         </Select>
 
-        <Select value={status} onValueChange={setStatus}>
+        <Select value={status} onValueChange={(value) => setStatus(value ?? '')}>
           <SelectTrigger className="w-[160px]"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="ALL">All Statuses</SelectItem>
@@ -121,7 +121,7 @@ export default function EmergenciesListPage() {
           </SelectContent>
         </Select>
 
-        <Select value={bloodGroup} onValueChange={setBloodGroup}>
+        <Select value={bloodGroup} onValueChange={(value) => setBloodGroup(value ?? '')}>
           <SelectTrigger className="w-[120px]"><SelectValue placeholder="Blood Group" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="ALL">All Groups</SelectItem>
@@ -129,7 +129,7 @@ export default function EmergenciesListPage() {
           </SelectContent>
         </Select>
 
-        <Select value={component} onValueChange={setComponent}>
+        <Select value={component} onValueChange={(value) => setComponent(value ?? '')}>
           <SelectTrigger className="w-[180px]"><SelectValue placeholder="Component" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="ALL">All Components</SelectItem>

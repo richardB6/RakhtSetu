@@ -13,6 +13,7 @@ interface AuthContextType {
     name: string;
     phone: string;
     role: UserRole;
+    profile: Record<string, unknown>;
   }) => Promise<{ success: boolean; message?: string }>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -73,6 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     name: string;
     phone: string;
     role: UserRole;
+    profile: Record<string, unknown>;
   }) => {
     try {
       const res = await fetch('/api/auth/register', {

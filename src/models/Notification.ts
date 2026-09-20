@@ -6,6 +6,7 @@ export interface INotification extends Document {
   title: string;
   message: string;
   severity: 'CRITICAL' | 'HIGH' | 'NORMAL' | 'INFO';
+  priority: number;
   referenceType?: string;
   referenceId?: mongoose.Types.ObjectId;
   channel: 'IN_APP' | 'EMAIL' | 'SMS' | 'PUSH';
@@ -28,6 +29,7 @@ const NotificationSchema = new Schema<INotification>(
     title: { type: String, required: true },
     message: { type: String, required: true },
     severity: { type: String, enum: ['CRITICAL', 'HIGH', 'NORMAL', 'INFO'], required: true },
+    priority: { type: Number, default: 50, min: 0, max: 100 },
     referenceType: { type: String },
     referenceId: { type: Schema.Types.ObjectId },
     channel: { type: String, enum: ['IN_APP', 'EMAIL', 'SMS', 'PUSH'], default: 'IN_APP' },

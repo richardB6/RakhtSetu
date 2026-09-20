@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { BLOOD_GROUPS, COMPONENT_TYPES, COMPONENT_LABELS, SEVERITY_LEVELS, SEVERITY_CONFIG } from '@/lib/engine/compatibility';
+import { BLOOD_GROUPS, COMPONENT_TYPES, COMPONENT_LABELS, SEVERITY_LEVELS, SEVERITY_CONFIG, ComponentType } from '@/lib/engine/compatibility';
 
 export default function NewEmergencyPage() {
   const router = useRouter();
@@ -35,8 +35,8 @@ export default function NewEmergencyPage() {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSelectChange = (name: string, value: string) => {
-    setFormData(prev => ({ ...prev, [name]: value }));
+  const handleSelectChange = (name: string, value: unknown) => {
+    setFormData(prev => ({ ...prev, [name]: typeof value === 'string' ? value : '' }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -137,7 +137,7 @@ export default function NewEmergencyPage() {
                     <SelectTrigger><SelectValue placeholder="Select Component" /></SelectTrigger>
                     <SelectContent>
                       {COMPONENT_TYPES.map(comp => (
-                        <SelectItem key={comp} value={comp}>{COMPONENT_LABELS[comp]}</SelectItem>
+                        <SelectItem key={comp} value={comp}>{COMPONENT_LABELS[comp as ComponentType]}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

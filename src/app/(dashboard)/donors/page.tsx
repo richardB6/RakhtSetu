@@ -73,7 +73,7 @@ export default function DonorsPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <Select value={filterBloodGroup} onValueChange={setFilterBloodGroup}>
+          <Select value={filterBloodGroup} onValueChange={(value) => setFilterBloodGroup(value ?? '')}>
             <SelectTrigger className="w-32 h-9 text-sm">
               <SelectValue placeholder="Blood group" />
             </SelectTrigger>
@@ -84,7 +84,7 @@ export default function DonorsPage() {
               ))}
             </SelectContent>
           </Select>
-          <Select value={filterAvailability} onValueChange={setFilterAvailability}>
+          <Select value={filterAvailability} onValueChange={(value) => setFilterAvailability(value ?? '')}>
             <SelectTrigger className="w-36 h-9 text-sm">
               <SelectValue placeholder="Availability" />
             </SelectTrigger>

@@ -21,13 +21,9 @@ export default function NotificationsPage() {
   const [loading, setLoading] = useState(true);
 
   const fetchNotifications = async () => {
-    // Mock fetching
-    const mock: NotificationMock[] = [
-      { _id: '1', type: 'EMERGENCY_REQUEST', title: 'Critical Blood Request', message: 'Hospital A needs 2 units of O- blood immediately.', severity: 'CRITICAL', isRead: false, createdAt: new Date().toISOString() },
-      { _id: '2', type: 'MATCH_ACCEPTED', title: 'Match Accepted', message: 'Donor John accepted your request.', severity: 'NORMAL', isRead: true, createdAt: new Date(Date.now() - 3600000).toISOString() },
-      { _id: '3', type: 'SYSTEM', title: 'System Update', message: 'System maintenance scheduled for tomorrow.', severity: 'INFO', isRead: false, createdAt: new Date(Date.now() - 86400000).toISOString() },
-    ];
-    setNotifications(mock);
+    const response = await fetch('/api/notifications?limit=50');
+    const result = await response.json();
+    setNotifications(response.ok && result.success ? result.data : []);
     setLoading(false);
   };
 
@@ -37,11 +33,13 @@ export default function NotificationsPage() {
     return () => clearInterval(interval);
   }, []);
 
-  const markAllRead = () => {
+  const markAllRead = async () => {
+    await fetch('/api/notifications/read-all', { method: 'POST' });
     setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
   };
 
-  const markRead = (id: string) => {
+  const markRead = async (id: string) => {
+    await fetch(`/api/notifications/${id}/read`, { method: 'PATCH' });
     setNotifications(prev => prev.map(n => n._id === id ? { ...n, isRead: true } : n));
   };
 

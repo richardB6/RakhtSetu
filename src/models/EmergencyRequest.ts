@@ -19,13 +19,17 @@ export interface IEmergencyRequest extends Document {
   };
   address: string;
   city: string;
-  status: 'DRAFT' | 'CREATED' | 'MATCHING' | 'RESOURCES_NOTIFIED' | 'RESPONSES_RECEIVED' | 'RESOURCE_SELECTED' | 'RESERVED' | 'IN_TRANSIT' | 'FULFILLED' | 'CANCELLED' | 'EXPIRED' | 'ESCALATED';
+  status: 'DRAFT' | 'CREATED' | 'MATCHING' | 'RESOURCES_NOTIFIED' | 'RESPONSES_RECEIVED' | 'RESOURCE_SELECTED' | 'RESERVED' | 'PROCESSING' | 'IN_TRANSIT' | 'FULFILLED' | 'CANCELLED' | 'EXPIRED' | 'ESCALATED';
   contactPerson: string;
   contactPhone: string;
   notes?: string;
   searchRadiusKm: number;
   matchCount: number;
   responseCount: number;
+  responseTimeoutMinutes: number;
+  responseDeadline?: Date;
+  escalationLevel: number;
+  selectedMatchId?: mongoose.Types.ObjectId;
   matchingStartedAt?: Date;
   firstResponseAt?: Date;
   fulfilledAt?: Date;
@@ -57,7 +61,7 @@ const EmergencyRequestSchema = new Schema<IEmergencyRequest>(
     city: { type: String, required: true },
     status: { 
       type: String, 
-      enum: ['DRAFT', 'CREATED', 'MATCHING', 'RESOURCES_NOTIFIED', 'RESPONSES_RECEIVED', 'RESOURCE_SELECTED', 'RESERVED', 'IN_TRANSIT', 'FULFILLED', 'CANCELLED', 'EXPIRED', 'ESCALATED'], 
+      enum: ['DRAFT', 'CREATED', 'MATCHING', 'RESOURCES_NOTIFIED', 'RESPONSES_RECEIVED', 'RESOURCE_SELECTED', 'RESERVED', 'PROCESSING', 'IN_TRANSIT', 'FULFILLED', 'CANCELLED', 'EXPIRED', 'ESCALATED'], 
       default: 'CREATED' 
     },
     contactPerson: { type: String, required: true },
@@ -66,6 +70,10 @@ const EmergencyRequestSchema = new Schema<IEmergencyRequest>(
     searchRadiusKm: { type: Number, default: 10 },
     matchCount: { type: Number, default: 0 },
     responseCount: { type: Number, default: 0 },
+      responseTimeoutMinutes: { type: Number, default: 15, min: 1 },
+      responseDeadline: { type: Date },
+      escalationLevel: { type: Number, default: 0, min: 0 },
+      selectedMatchId: { type: Schema.Types.ObjectId, ref: 'Match' },
     matchingStartedAt: { type: Date },
     firstResponseAt: { type: Date },
     fulfilledAt: { type: Date },

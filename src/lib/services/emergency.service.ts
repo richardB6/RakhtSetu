@@ -3,7 +3,7 @@ import { EmergencyRequest } from '@/models/EmergencyRequest';
 import { Hospital } from '@/models/Hospital';
 import { generateRequestId } from '@/lib/utils/id-generator';
 import { createAuditLog } from './audit.service';
-import { isValidTransition, ACTIVE_STATUSES, RequestStatus, SeverityLevel } from '@/lib/engine/compatibility';
+import { isValidTransition, ACTIVE_STATUSES, RequestStatus, SeverityLevel, SEVERITY_CONFIG } from '@/lib/engine/compatibility';
 import { DashboardStats } from '@/types';
 import mongoose from 'mongoose';
 
@@ -29,6 +29,10 @@ export async function createEmergencyRequest(data: any, hospitalId: string, user
     quantityFulfilled: 0,
     matchCount: 0,
     responseCount: 0,
+    responseTimeoutMinutes: Number.isFinite(Number(data.responseTimeoutMinutes))
+      ? Math.max(1, Number(data.responseTimeoutMinutes))
+      : (SEVERITY_CONFIG[data.severity as SeverityLevel]?.maxResponseTimeMinutes || 15),
+    escalationLevel: 0,
   };
 
   const emergencyRequest = await EmergencyRequest.create(requestData);
@@ -57,6 +61,7 @@ export async function getEmergencyRequests(filters: {
   hospitalId?: string;
   bloodGroup?: string;
   component?: string;
+  search?: string;
   page?: number;
   limit?: number;
 }) {
@@ -71,6 +76,12 @@ export async function getEmergencyRequests(filters: {
   if (filters.hospitalId) query.hospitalId = filters.hospitalId;
   if (filters.bloodGroup) query.bloodGroup = filters.bloodGroup;
   if (filters.component) query.component = filters.component;
+  if (filters.search) {
+    query.$or = [
+      { requestId: { $regex: filters.search, $options: 'i' } },
+      { patientReference: { $regex: filters.search, $options: 'i' } },
+    ];
+  }
 
   const page = filters.page || 1;
   const limit = filters.limit || 10;
@@ -159,9 +170,9 @@ export async function updateEmergencyStatus(id: string, newStatus: RequestStatus
 
   await createAuditLog({
     userId,
-    userRole: 'SYSTEM', // simplified
-    userName: 'System User', // simplified
-    action: 'UPDATE_EMERGENCY_STATUS',
+    userRole: 'HOSPITAL',
+    userName: userId,
+    action: newStatus === 'CANCELLED' ? 'CANCEL_EMERGENCY_REQUEST' : 'UPDATE_EMERGENCY_STATUS',
     entityType: 'EmergencyRequest',
     entityId: request._id.toString(),
     description: `Emergency request status updated to ${newStatus}`,

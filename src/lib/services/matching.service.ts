@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import connectToDatabase from '@/lib/db/mongodb';
+import { connectToDatabase } from '@/lib/db/mongodb';
 import { EmergencyRequest } from '@/models/EmergencyRequest';
 import { Match } from '@/models/Match';
 import { Inventory } from '@/models/Inventory';
@@ -7,6 +7,9 @@ import { BloodBank } from '@/models/BloodBank';
 import { Donor } from '@/models/Donor';
 import { User } from '@/models/User';
 import { getCompatibleDonorGroups, getCompatibilityLevel, ComponentType, BloodGroup } from '@/lib/engine/compatibility';
+import { rankResources } from '@/lib/engine/matching-policy';
+import { createNotification } from '@/lib/services/notification.service';
+export { rankResources } from '@/lib/engine/matching-policy';
 
 // Dynamically access Notification and AuditLog models to avoid strict import errors if they don't exist yet
 const getNotificationModel = () => mongoose.models.Notification || mongoose.model('Notification', new mongoose.Schema({}, { strict: false }));
@@ -23,6 +26,8 @@ export interface CalculateMatchScoreParams {
   responseRate: number;
   severity: 'CRITICAL' | 'HIGH' | 'NORMAL';
   requiredBy: Date;
+  /** The clock used for scoring. Supplying it makes ranking reproducible. */
+  asOf?: Date;
 }
 
 export function calculateMatchScore(params: CalculateMatchScoreParams) {
@@ -58,7 +63,7 @@ export function calculateMatchScore(params: CalculateMatchScoreParams) {
   else if (distanceKm <= 50) distanceScore = 30;
 
   let urgencyScore = 0;
-  const hoursUntilRequired = (requiredBy.getTime() - Date.now()) / (1000 * 60 * 60);
+  const hoursUntilRequired = (requiredBy.getTime() - (params.asOf || new Date()).getTime()) / (1000 * 60 * 60);
   if (severity === 'CRITICAL' && hoursUntilRequired <= 2) urgencyScore = 100;
   else if (severity === 'CRITICAL') urgencyScore = 80;
   else if (severity === 'HIGH' && hoursUntilRequired <= 12) urgencyScore = 70;
@@ -101,8 +106,11 @@ export function calculateMatchScore(params: CalculateMatchScoreParams) {
   else if (availableQuantity > 0) reasons.push('Partial quantity available');
   
   if (distanceKm <= 5) reasons.push(`Within ${distanceKm.toFixed(1)} km emergency radius`);
+  else reasons.push(`${distanceKm.toFixed(1)} km from hospital`);
   if (isVerified) reasons.push('Verified resource');
+  else reasons.push('Verification pending; hospital must confirm before release');
   if (responseRate > 0.8) reasons.push('High response reliability');
+  else if (responseRate >= 0) reasons.push(`Response reliability ${(responseRate * 100).toFixed(0)}%`);
 
   return {
     score: finalScore,
@@ -119,14 +127,42 @@ export function calculateMatchScore(params: CalculateMatchScoreParams) {
   };
 }
 
+/** Operational scoring alias kept explicit to distinguish it from clinical decisions. */
+export const calculateOperationalScore = calculateMatchScore;
+
 export async function runMatchingEngine(emergencyRequestId: string, userId: string) {
   await connectToDatabase();
   
-  const request = await EmergencyRequest.findById(emergencyRequestId);
+  const request = await EmergencyRequest.findOne(
+    mongoose.Types.ObjectId.isValid(emergencyRequestId)
+      ? { _id: emergencyRequestId }
+      : { requestId: emergencyRequestId }
+  );
   if (!request) {
     throw new Error('Emergency request not found');
   }
 
+  // Do not start a search for malformed or already terminal requests. This is
+  // intentionally explicit rather than relying on Mongoose's enum validation.
+  if (!request.bloodGroup || !request.component || request.quantity < 1 ||
+      !Number.isFinite(request.searchRadiusKm) || request.searchRadiusKm <= 0 ||
+      !request.location?.coordinates || request.location.coordinates.length !== 2 ||
+      request.location.coordinates.some((coordinate) => !Number.isFinite(coordinate)) ||
+      !(request.requiredBy instanceof Date) || Number.isNaN(request.requiredBy.getTime())) {
+    throw new Error('Emergency request is not valid for matching');
+  }
+  if (['FULFILLED', 'CANCELLED', 'EXPIRED'].includes(request.status)) {
+    throw new Error(`Cannot match a ${request.status.toLowerCase()} request`);
+  }
+  if (!['CREATED', 'MATCHING', 'ESCALATED'].includes(request.status)) {
+    const existing = await Match.find({ emergencyRequestId: request._id }).sort({ rank: 1, _id: 1 });
+    if (existing.length > 0) return existing;
+    throw new Error(`Request is already ${request.status.toLowerCase()}`);
+  }
+
+  // A retry replaces stale pending matches instead of creating duplicate
+  // notifications and ranks.
+  await Match.deleteMany({ emergencyRequestId: request._id, status: { $in: ['PENDING', 'NOTIFIED'] } });
   request.status = 'MATCHING';
   request.matchingStartedAt = new Date();
   await request.save();
@@ -137,18 +173,22 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
   }
 
   const allMatches = [];
+  const requestPoint = {
+    type: 'Point' as const,
+    coordinates: request.location.coordinates as [number, number],
+  };
 
   // Query Blood Banks
   const bloodBanks = await BloodBank.aggregate([
     {
       $geoNear: {
-        near: request.location,
+        near: requestPoint,
         distanceField: 'distance',
         maxDistance: request.searchRadiusKm * 1000,
         spherical: true,
       },
     },
-    { $match: { isOpen: true } },
+    { $match: { isOpen: true, componentCapabilities: request.component } },
   ]);
 
   for (const bb of bloodBanks) {
@@ -163,7 +203,11 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
     });
 
     for (const inv of inventoryItems) {
-      const user = await User.findById(bb.userId);
+      const user = await User.findOne({
+        _id: bb.userId,
+        isActive: true,
+        verificationStatus: { $nin: ['REJECTED', 'SUSPENDED'] },
+      }).lean();
       if (!user) continue;
 
       const responseRate = bb.totalResponseCount > 0 ? bb.acceptedResponseCount / bb.totalResponseCount : -1;
@@ -179,6 +223,7 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
         responseRate,
         severity: request.severity,
         requiredBy: request.requiredBy,
+        asOf: request.matchingStartedAt,
       });
 
       allMatches.push({
@@ -202,7 +247,7 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
   const donors = await Donor.aggregate([
     {
       $geoNear: {
-        near: request.location,
+        near: requestPoint,
         distanceField: 'distance',
         maxDistance: request.searchRadiusKm * 1000,
         spherical: true,
@@ -213,13 +258,18 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
         bloodGroup: { $in: compatibleGroups },
         isAvailable: true,
         emergencyNotificationsEnabled: true,
+        $expr: { $lte: ['$distance', { $multiply: ['$availabilityRadius', 1000] }] },
       },
     },
   ]);
 
   for (const donor of donors) {
     const donorDistanceKm = donor.distance / 1000;
-    const user = await User.findById(donor.userId);
+    const user = await User.findOne({
+      _id: donor.userId,
+      isActive: true,
+      verificationStatus: { $nin: ['REJECTED', 'SUSPENDED'] },
+    }).lean();
     if (!user) continue;
 
     const responseRate = donor.totalResponseCount > 0 ? donor.acceptedResponseCount / donor.totalResponseCount : -1;
@@ -236,6 +286,7 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
       responseRate,
       severity: request.severity,
       requiredBy: request.requiredBy,
+      asOf: request.matchingStartedAt,
     });
 
     allMatches.push({
@@ -255,37 +306,42 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
   }
 
   // Sort and assign ranks
-  allMatches.sort((a, b) => b.score - a.score);
-  
-  const rankedMatches = allMatches.map((m, idx) => ({ ...m, rank: idx + 1 }));
+  // Every tie-breaker is stable and based on persisted values. This prevents
+  // MongoDB iteration order from changing who is notified first.
+  const rankedMatches = rankResources(allMatches).map((m, idx) => ({ ...m, rank: idx + 1 }));
 
   // Save matches to DB
   const createdMatches = await Match.insertMany(rankedMatches);
 
   // Update request
-  request.status = 'RESOURCES_NOTIFIED';
+  request.status = createdMatches.length > 0 ? 'RESOURCES_NOTIFIED' : 'ESCALATED';
+  request.responseDeadline = createdMatches.length > 0
+    ? new Date(Date.now() + request.responseTimeoutMinutes * 60 * 1000)
+    : undefined;
   request.matchCount = createdMatches.length;
   await request.save();
 
   // Create notifications for top 10 matches
-  const NotificationModel = getNotificationModel();
   const top10 = createdMatches.slice(0, 10);
-  const notifications = top10.map((match) => ({
-    userId: match.resourceUserId,
+  if (top10.length > 0) {
+    await Match.updateMany(
+      { _id: { $in: top10.map((match) => match._id) } },
+      { $set: { status: 'NOTIFIED', notifiedAt: new Date() } }
+    );
+    top10.forEach((match) => {
+      match.status = 'NOTIFIED';
+      match.notifiedAt = new Date();
+    });
+  }
+  await Promise.all(top10.map((match) => createNotification({
+    userId: match.resourceUserId.toString(),
     type: 'NEW_MATCH',
     title: 'Emergency Blood Request Match',
-    message: `You have been matched for an emergency request of ${request.quantity} units of ${request.bloodGroup} ${request.component}.`,
+    message: `You have been matched for an emergency request of ${request.quantity} units of ${request.bloodGroup} ${request.component}. Respond before ${request.responseDeadline?.toISOString()}.`,
     severity: request.severity,
     referenceType: 'MATCH',
-    referenceId: match._id,
-    channel: 'IN_APP',
-    deliveryStatus: 'PENDING',
-    isRead: false,
-    createdAt: new Date(),
-  }));
-  if (notifications.length > 0) {
-    await NotificationModel.insertMany(notifications);
-  }
+    referenceId: match._id.toString(),
+  })));
 
   // Create audit log
   const AuditLogModel = getAuditLogModel();
@@ -305,12 +361,30 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
 
 export async function getMatchesForRequest(emergencyRequestId: string) {
   await connectToDatabase();
-  
-  const matches = await Match.find({ emergencyRequestId })
-    .sort({ score: -1 })
-    .populate('resourceUser');
-    
-  return matches;
+  const request = await EmergencyRequest.findOne(
+    mongoose.Types.ObjectId.isValid(emergencyRequestId)
+      ? { _id: emergencyRequestId }
+      : { requestId: emergencyRequestId }
+  ).select('_id');
+  if (!request) throw new Error('Emergency request not found');
+
+  const matches = await Match.find({ emergencyRequestId: request._id })
+    .sort({ rank: 1, _id: 1 })
+    .populate('resourceUserId');
+
+  // resourceId is intentionally polymorphic in Match, so Mongoose cannot
+  // populate it from the schema. Hydrate the resource for the UI explicitly.
+  return Promise.all(matches.map(async (match) => {
+    const resource = match.resourceType === 'BLOOD_BANK'
+      ? await BloodBank.findById(match.resourceId).lean()
+      : await Donor.findById(match.resourceId).lean();
+    const value = match.toObject();
+    return {
+      ...value,
+      resourceUser: value.resourceUserId,
+      [match.resourceType === 'BLOOD_BANK' ? 'bloodBank' : 'donor']: resource,
+    };
+  }));
 }
 
 export async function respondToMatch(matchId: string, userId: string, accept: boolean, declineReason?: string) {
@@ -336,7 +410,6 @@ export async function respondToMatch(matchId: string, userId: string, accept: bo
   }
 
   const AuditLogModel = getAuditLogModel();
-  const NotificationModel = getNotificationModel();
 
   if (accept) {
     match.status = 'ACCEPTED';
@@ -349,6 +422,7 @@ export async function respondToMatch(matchId: string, userId: string, accept: bo
         const inv = await Inventory.findOne({
           bloodBankId: bb._id,
           component: request.component,
+          bloodGroup: { $in: getCompatibleDonorGroups(request.bloodGroup as BloodGroup, request.component as ComponentType) },
           availableUnits: { $gt: 0 }
         });
         
@@ -360,8 +434,17 @@ export async function respondToMatch(matchId: string, userId: string, accept: bo
             match.reservedQuantity = unitsToReserve;
             await inv.save();
           }
+
         }
       }
+    }
+    if (match.resourceType === 'DONOR') {
+      // A donor match represents one available donation. Mark it unavailable
+      // after acceptance so a second request cannot reserve the same donor.
+      await Donor.findOneAndUpdate(
+        { _id: match.resourceId, isAvailable: true },
+        { $set: { isAvailable: false } }
+      );
     }
 
     request.responseCount += 1;
@@ -370,24 +453,20 @@ export async function respondToMatch(matchId: string, userId: string, accept: bo
     }
     
     // Move to RESPONSES_RECEIVED if it's currently in RESOURCES_NOTIFIED
-    if (request.status === 'RESOURCES_NOTIFIED') {
+    if (request.status === 'RESOURCES_NOTIFIED' || request.status === 'ESCALATED') {
       request.status = 'RESPONSES_RECEIVED';
     }
     
     await request.save();
 
-    await NotificationModel.create({
-      userId: request.createdBy,
+    await createNotification({
+      userId: request.createdBy.toString(),
       type: 'MATCH_ACCEPTED',
       title: 'Resource Accepted Request',
       message: `A resource has accepted your request for ${request.bloodGroup} ${request.component}.`,
       severity: 'INFO',
       referenceType: 'MATCH',
-      referenceId: match._id,
-      channel: 'IN_APP',
-      deliveryStatus: 'PENDING',
-      isRead: false,
-      createdAt: new Date(),
+      referenceId: match._id.toString(),
     });
 
     await AuditLogModel.create({

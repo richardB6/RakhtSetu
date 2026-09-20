@@ -7,6 +7,9 @@ export const GET = withAuth(async (req, context) => {
   try {
     const id = Array.isArray(context.params.id) ? context.params.id[0] : context.params.id;
     const result = await getEmergencyById(id);
+    if (context.user.role === 'HOSPITAL' && result.createdBy.toString() !== context.user.userId) {
+      return NextResponse.json({ success: false, message: 'You do not have access to this request.' }, { status: 403 });
+    }
     return NextResponse.json({ success: true, data: result });
   } catch (error: any) {
     return NextResponse.json({ success: false, message: error.message }, { status: 404 });
@@ -18,6 +21,10 @@ export const PATCH = withAuth(async (req, context) => {
     const id = Array.isArray(context.params.id) ? context.params.id[0] : context.params.id;
     const body = await req.json();
     const validatedData = updateEmergencyStatusSchema.parse(body);
+    const existing = await getEmergencyById(id);
+    if (context.user.role === 'HOSPITAL' && existing.createdBy.toString() !== context.user.userId) {
+      return NextResponse.json({ success: false, message: 'You do not have access to this request.' }, { status: 403 });
+    }
 
     const result = await updateEmergencyStatus(
       id,

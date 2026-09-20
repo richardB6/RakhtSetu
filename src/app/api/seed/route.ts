@@ -12,7 +12,10 @@ import { Notification } from '@/models/Notification';
 import { AuditLog } from '@/models/AuditLog';
 import { Escalation } from '@/models/Escalation';
 import { hashPassword } from '@/lib/auth/password';
+import { verifyAccessToken } from '@/lib/auth/jwt';
+import { COOKIE_NAMES } from '@/lib/auth/cookies';
 import { BLOOD_GROUPS, COMPONENT_TYPES, SEVERITY_LEVELS } from '@/lib/engine/compatibility';
+import type { NotificationType, NotificationSeverity } from '@/types';
 
 // Maharashtra Locations
 const HOSPITALS = [
@@ -55,8 +58,24 @@ function getRandomElement<T>(arr: T[] | readonly T[]): T {
 }
 
 export async function POST(req: NextRequest) {
-  if (process.env.NODE_ENV === 'production' && process.env.DEMO_MODE !== 'true') {
-    return NextResponse.json({ error: 'Seeding is not allowed in production unless DEMO_MODE is true.' }, { status: 403 });
+  if (process.env.NODE_ENV === 'production' || process.env.DEMO_MODE !== 'true') {
+    return NextResponse.json({ success: false, message: 'Seeding is available only in development demo mode.' }, { status: 403 });
+  }
+
+  const seedSecret = process.env.SEED_SECRET;
+  const hasSeedSecret = Boolean(seedSecret && req.headers.get('x-seed-secret') === seedSecret);
+  if (!hasSeedSecret) {
+    const token = req.cookies.get(COOKIE_NAMES.ACCESS_TOKEN)?.value
+      || req.headers.get('authorization')?.replace(/^Bearer\s+/, '');
+    const decoded = token ? await verifyAccessToken(token) : null;
+    if (!decoded) {
+      return NextResponse.json({ success: false, message: 'Development seed secret or admin authentication is required.' }, { status: 401 });
+    }
+    await connectToDatabase();
+    const admin = await User.findById(decoded.userId).select('_id role isActive verificationStatus');
+    if (!admin || admin.role !== 'ADMIN' || !admin.isActive || admin.verificationStatus !== 'VERIFIED') {
+      return NextResponse.json({ success: false, message: 'Administrator access is required.' }, { status: 403 });
+    }
   }
 
   try {
@@ -356,8 +375,8 @@ export async function POST(req: NextRequest) {
 
     // Create Notifications
     const demoUserIds = [demoHospitalUser._id, demoBloodBankUser._id, demoDonorUser._id, adminUser._id];
-    const notificationTypes = ['EMERGENCY_REQUEST', 'NEW_MATCH', 'SYSTEM', 'VERIFICATION_UPDATE'];
-    const notificationSeverities = ['CRITICAL', 'HIGH', 'NORMAL', 'INFO'];
+    const notificationTypes: NotificationType[] = ['EMERGENCY_REQUEST', 'NEW_MATCH', 'SYSTEM', 'VERIFICATION_UPDATE'];
+    const notificationSeverities: NotificationSeverity[] = ['CRITICAL', 'HIGH', 'NORMAL', 'INFO'];
     
     for (let i = 0; i < 20; i++) {
       await Notification.create({

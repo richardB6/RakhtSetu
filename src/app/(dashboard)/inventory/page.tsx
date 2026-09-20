@@ -118,7 +118,7 @@ export default function InventoryPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <Select value={filterComponent} onValueChange={setFilterComponent}>
+          <Select value={filterComponent} onValueChange={(value) => setFilterComponent(value ?? '')}>
             <SelectTrigger className="w-48 h-9 text-sm">
               <SelectValue placeholder="Filter by component" />
             </SelectTrigger>
