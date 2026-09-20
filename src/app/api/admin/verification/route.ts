@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth/withAuth';
 import { connectToDatabase } from '@/lib/db/mongodb';
 import { User } from '@/models/User';
@@ -57,6 +57,7 @@ export const PATCH = withAuth(async (req, context) => {
       return NextResponse.json({ success: false, message: 'User not found' }, { status: 404 });
     }
 
+    const previousState = { verificationStatus: user.verificationStatus };
     const verification = await Verification.findOneAndUpdate(
       { userId: user._id },
       {
@@ -67,6 +68,10 @@ export const PATCH = withAuth(async (req, context) => {
           rejectionReason: parsed.data.status === 'REJECTED' ? parsed.data.reason || 'Not provided' : undefined,
           suspensionReason: parsed.data.status === 'SUSPENDED' ? parsed.data.reason || 'Not provided' : undefined,
           notes: parsed.data.notes || '',
+        },
+        $setOnInsert: {
+          entityType: user.role,
+          submittedDocuments: [],
         },
       },
       { upsert: true, new: true }
@@ -79,11 +84,11 @@ export const PATCH = withAuth(async (req, context) => {
       userId: context.user.userId,
       userRole: 'ADMIN',
       userName: context.user.name,
-      action: 'VERIFY_RESOURCE',
+      action: parsed.data.status === 'VERIFIED' ? 'VERIFICATION_APPROVED' : parsed.data.status === 'REJECTED' ? 'VERIFICATION_REJECTED' : 'VERIFICATION_SUSPENDED',
       entityType: 'VERIFICATION',
-      entityId: user._id.toString(),
+      entityId: verification._id.toString(),
       description: `Set verification status for ${user.name} to ${parsed.data.status}`,
-      previousState: { verificationStatus: user.verificationStatus },
+      previousState,
       newState: { verificationStatus: parsed.data.status, verificationId: verification._id.toString() },
     });
 

@@ -5,12 +5,12 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Shield, CheckCircle, XCircle, Clock, User, Building2, Heart } from 'lucide-react';
+import { Shield, CheckCircle, XCircle, User, Building2, Heart, PauseCircle } from 'lucide-react';
 import { timeAgo } from '@/lib/utils/date';
 
 interface VerificationEntry {
   _id: string;
-  userId: { _id: string; name: string; email: string; role: string };
+  user: { _id: string; name: string; email: string; role: string };
   entityType: string;
   status: string;
   submittedDocuments: string[];
@@ -25,73 +25,46 @@ export default function VerificationPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>('PENDING');
+  const [search, setSearch] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   const fetchEntries = useCallback(async () => {
     try {
-      // We'll use a direct query since we don't have a dedicated verification API yet
-      // For now, fetch users with their verification status
-      const res = await fetch(`/api/auth/me`);
+      const query = filter === 'ALL' ? 'ALL' : filter;
+      const res = await fetch(`/api/admin/verification?status=${query}&q=${encodeURIComponent(search)}`);
       if (res.ok) {
-        // Fallback: show placeholder entries from seed data
-      }
+        const data = await res.json();
+        setEntries(data.data || []);
+      } else throw new Error((await res.json()).message || 'Unable to load verification entries');
     } catch (err) {
-      console.error('Failed to fetch:', err);
+      setError(err instanceof Error ? err.message : 'Unable to load verification entries');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [filter, search]);
 
   useEffect(() => {
-    // Simulate loading with seed data
-    setTimeout(() => {
-      setEntries([
-        {
-          _id: '1',
-          userId: { _id: 'u1', name: 'KEM Hospital', email: 'hospital@demo.rakthsetu.in', role: 'HOSPITAL' },
-          entityType: 'HOSPITAL',
-          status: 'VERIFIED',
-          submittedDocuments: ['Registration Certificate', 'Operating License'],
-          verifiedAt: new Date(Date.now() - 86400000 * 5).toISOString(),
-          createdAt: new Date(Date.now() - 86400000 * 7).toISOString(),
-        },
-        {
-          _id: '2',
-          userId: { _id: 'u2', name: 'Maharashtra State Blood Bank', email: 'bloodbank@demo.rakthsetu.in', role: 'BLOOD_BANK' },
-          entityType: 'BLOOD_BANK',
-          status: 'VERIFIED',
-          submittedDocuments: ['CDSCO License', 'FDA Certificate'],
-          verifiedAt: new Date(Date.now() - 86400000 * 4).toISOString(),
-          createdAt: new Date(Date.now() - 86400000 * 6).toISOString(),
-        },
-        {
-          _id: '3',
-          userId: { _id: 'u3', name: 'Rajesh Kumar', email: 'donor@demo.rakthsetu.in', role: 'DONOR' },
-          entityType: 'DONOR',
-          status: 'VERIFIED',
-          submittedDocuments: ['Aadhaar Card', 'Medical Fitness'],
-          verifiedAt: new Date(Date.now() - 86400000 * 3).toISOString(),
-          createdAt: new Date(Date.now() - 86400000 * 5).toISOString(),
-        },
-        {
-          _id: '4',
-          userId: { _id: 'u4', name: 'City General Hospital', email: 'city.gen@hospital.in', role: 'HOSPITAL' },
-          entityType: 'HOSPITAL',
-          status: 'PENDING',
-          submittedDocuments: ['Registration Certificate'],
-          createdAt: new Date(Date.now() - 86400000 * 1).toISOString(),
-        },
-        {
-          _id: '5',
-          userId: { _id: 'u5', name: 'Priya Sharma', email: 'priya.s@donor.in', role: 'DONOR' },
-          entityType: 'DONOR',
-          status: 'PENDING',
-          submittedDocuments: ['ID Proof'],
-          createdAt: new Date(Date.now() - 3600000 * 8).toISOString(),
-        },
-      ]);
-      setLoading(false);
-    }, 500);
-  }, []);
+    fetchEntries();
+  }, [fetchEntries]);
+
+  const updateVerification = async (entry: VerificationEntry, status: 'VERIFIED' | 'REJECTED' | 'SUSPENDED') => {
+    const reason = status === 'VERIFIED' ? undefined : window.prompt(`Reason for ${status.toLowerCase()}:`);
+    if (status !== 'VERIFIED' && !reason) return;
+    setActionLoading(entry._id);
+    try {
+      const res = await fetch('/api/admin/verification', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: entry.user._id, status, reason }),
+      });
+      if (!res.ok) throw new Error((await res.json()).message || 'Verification update failed');
+      await fetchEntries();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Verification update failed');
+    } finally {
+      setActionLoading(null);
+    }
+  };
 
   const entityIcon = (type: string) => {
     switch (type) {
@@ -112,7 +85,7 @@ export default function VerificationPage() {
     }
   };
 
-  const filtered = filter === 'ALL' ? entries : entries.filter((e) => e.status === filter);
+  const filtered = entries;
 
   return (
     <div className="space-y-6">
@@ -128,7 +101,7 @@ export default function VerificationPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          {['PENDING', 'VERIFIED', 'REJECTED', 'ALL'].map((f) => (
+          {['PENDING', 'VERIFIED', 'REJECTED', 'SUSPENDED', 'ALL'].map((f) => (
             <Button
               key={f}
               variant={filter === f ? 'default' : 'outline'}
@@ -141,6 +114,8 @@ export default function VerificationPage() {
           ))}
         </div>
       </div>
+      <input className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm" placeholder="Search name, email, role, or ID" value={search} onChange={(event) => setSearch(event.target.value)} />
+      {error && <Card className="border-destructive/30 p-4 text-sm text-destructive">{error}</Card>}
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -187,10 +162,10 @@ export default function VerificationPage() {
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium">{entry.userId.name}</p>
+                      <p className="text-sm font-medium">{entry.user.name}</p>
                       {statusBadge(entry.status)}
                     </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">{entry.userId.email}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{entry.user.email}</p>
                     <div className="flex items-center gap-3 mt-2">
                       <Badge variant="outline" className="text-[10px]">
                         {entry.entityType.replace('_', ' ')}
@@ -213,6 +188,7 @@ export default function VerificationPage() {
                       variant="outline"
                       className="text-xs text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/10"
                       disabled={actionLoading === entry._id}
+                      onClick={() => updateVerification(entry, 'VERIFIED')}
                     >
                       <CheckCircle className="w-3.5 h-3.5 mr-1" />
                       Verify
@@ -222,9 +198,20 @@ export default function VerificationPage() {
                       variant="outline"
                       className="text-xs text-destructive border-destructive/20 hover:bg-destructive/10"
                       disabled={actionLoading === entry._id}
+                      onClick={() => updateVerification(entry, 'REJECTED')}
                     >
                       <XCircle className="w-3.5 h-3.5 mr-1" />
                       Reject
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-xs"
+                      disabled={actionLoading === entry._id}
+                      onClick={() => updateVerification(entry, 'SUSPENDED')}
+                    >
+                      <PauseCircle className="w-3.5 h-3.5 mr-1" />
+                      Suspend
                     </Button>
                   </div>
                 )}

@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth/withAuth';
 import { connectToDatabase } from '@/lib/db/mongodb';
 import { Donor } from '@/models/Donor';
+import { User } from '@/models/User';
 import { createAuditLog } from '@/lib/services/audit.service';
 import { z } from 'zod';
 
@@ -9,13 +10,17 @@ const donorAvailabilitySchema = z.object({
   availabilityStatus: z.enum(['AVAILABLE', 'UNAVAILABLE', 'TEMPORARILY_UNAVAILABLE']).optional(),
   availabilityRadius: z.number().min(1).max(200).optional(),
   emergencyNotificationsEnabled: z.boolean().optional(),
+  location: z.object({ type: z.literal('Point'), coordinates: z.array(z.number()).length(2) }).optional(),
 });
 
-export const GET = withAuth(async () => {
+export const GET = withAuth(async (_req, context) => {
   try {
     await connectToDatabase();
-    const donor = await Donor.findOne({ userId: (globalThis as any).userId || undefined });
-    return NextResponse.json({ success: true, data: donor || null });
+    const [donor, user] = await Promise.all([
+      Donor.findOne({ userId: context.user.userId }),
+      User.findById(context.user.userId).select('verificationStatus'),
+    ]);
+    return NextResponse.json({ success: true, data: donor ? { ...donor.toObject(), verificationStatus: user?.verificationStatus } : null });
   } catch (error: any) {
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });
   }
@@ -48,6 +53,7 @@ export const PATCH = withAuth(async (req, context) => {
     }
     if (parsed.data.availabilityRadius !== undefined) donor.availabilityRadius = parsed.data.availabilityRadius;
     if (parsed.data.emergencyNotificationsEnabled !== undefined) donor.emergencyNotificationsEnabled = parsed.data.emergencyNotificationsEnabled;
+    if (parsed.data.location) donor.location = parsed.data.location;
 
     await donor.save();
 

@@ -14,6 +14,8 @@ import {
   donorProfileSchema,
 } from '@/lib/validations/auth.schema';
 import { formatZodErrors, validateRequestBody } from '@/lib/validations/common';
+import { Verification } from '@/models/Verification';
+import { createAuditLog } from '@/lib/services/audit.service';
 
 export async function POST(req: NextRequest) {
   try {
@@ -92,6 +94,21 @@ export async function POST(req: NextRequest) {
     }
     user.profileId = profileDocument._id;
     await user.save();
+    await Verification.create({
+      userId: user._id,
+      entityType: role,
+      status: 'PENDING',
+    });
+    await createAuditLog({
+      userId: user._id.toString(),
+      userRole: role,
+      userName: user.name,
+      action: 'VERIFICATION_CREATED',
+      entityType: 'VERIFICATION',
+      entityId: user._id.toString(),
+      description: `Pending verification created for ${role}`,
+      newState: { status: 'PENDING', entityType: role },
+    });
 
     // Sign tokens
     const accessToken = await signAccessToken({

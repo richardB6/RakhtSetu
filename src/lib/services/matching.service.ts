@@ -9,6 +9,7 @@ import { User } from '@/models/User';
 import { getCompatibleDonorGroups, getCompatibilityLevel, ComponentType, BloodGroup } from '@/lib/engine/compatibility';
 import { rankResources } from '@/lib/engine/matching-policy';
 import { createNotification } from '@/lib/services/notification.service';
+import { reserveAcceptedMatch } from '@/lib/services/reservation.service';
 export { rankResources } from '@/lib/engine/matching-policy';
 
 // Dynamically access Notification and AuditLog models to avoid strict import errors if they don't exist yet
@@ -191,7 +192,7 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
     {
       $match: {
         isOpen: true,
-        operationalStatus: { $in: ['OPEN', 'LIMITED'] },
+        operationalStatus: { $nin: ['UNAVAILABLE', 'CLOSED'] },
         componentCapabilities: request.component,
       },
     },
@@ -206,6 +207,7 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
       bloodGroup: { $in: compatibleGroups },
       component: request.component,
       availableUnits: { $gt: 0 },
+      operationallyUnavailable: { $ne: true },
       status: { $ne: 'UNAVAILABLE' },
     });
 
@@ -213,7 +215,7 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
       const user = await User.findOne({
         _id: bb.userId,
         isActive: true,
-        verificationStatus: { $nin: ['REJECTED', 'SUSPENDED'] },
+        verificationStatus: 'VERIFIED',
       }).lean();
       if (!user) continue;
 
@@ -263,7 +265,7 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
     {
       $match: {
         bloodGroup: { $in: compatibleGroups },
-        availabilityStatus: 'AVAILABLE',
+        availabilityStatus: { $nin: ['UNAVAILABLE', 'TEMPORARILY_UNAVAILABLE'] },
         isAvailable: true,
         emergencyNotificationsEnabled: true,
         $expr: { $lte: ['$distance', { $multiply: ['$availabilityRadius', 1000] }] },
@@ -276,7 +278,7 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
     const user = await User.findOne({
       _id: donor.userId,
       isActive: true,
-      verificationStatus: { $nin: ['REJECTED', 'SUSPENDED'] },
+      verificationStatus: 'VERIFIED',
     }).lean();
     if (!user) continue;
 
@@ -423,37 +425,7 @@ export async function respondToMatch(matchId: string, userId: string, accept: bo
     match.status = 'ACCEPTED';
     match.respondedAt = new Date();
 
-    if (match.resourceType === 'BLOOD_BANK') {
-      const bb = await BloodBank.findById(match.resourceId);
-      if (bb) {
-        // Find specific inventory entry and reserve it
-        const inv = await Inventory.findOne({
-          bloodBankId: bb._id,
-          component: request.component,
-          bloodGroup: { $in: getCompatibleDonorGroups(request.bloodGroup as BloodGroup, request.component as ComponentType) },
-          availableUnits: { $gt: 0 }
-        });
-        
-        if (inv) {
-          const unitsToReserve = Math.min(request.quantity - request.quantityFulfilled, inv.availableUnits, request.quantity);
-          if (unitsToReserve > 0) {
-            inv.availableUnits -= unitsToReserve;
-            inv.reservedUnits += unitsToReserve;
-            match.reservedQuantity = unitsToReserve;
-            await inv.save();
-          }
-
-        }
-      }
-    }
-    if (match.resourceType === 'DONOR') {
-      // A donor match represents one available donation. Mark it unavailable
-      // after acceptance so a second request cannot reserve the same donor.
-      await Donor.findOneAndUpdate(
-        { _id: match.resourceId, isAvailable: true },
-        { $set: { isAvailable: false } }
-      );
-    }
+    await reserveAcceptedMatch(match._id.toString(), { userId, userName: 'Resource User' });
 
     request.responseCount += 1;
     if (request.responseCount === 1) {
@@ -466,16 +438,6 @@ export async function respondToMatch(matchId: string, userId: string, accept: bo
     }
     
     await request.save();
-
-    await createNotification({
-      userId: request.createdBy.toString(),
-      type: 'MATCH_ACCEPTED',
-      title: 'Resource Accepted Request',
-      message: `A resource has accepted your request for ${request.bloodGroup} ${request.component}.`,
-      severity: 'INFO',
-      referenceType: 'MATCH',
-      referenceId: match._id.toString(),
-    });
 
     await AuditLogModel.create({
       userId,

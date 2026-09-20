@@ -1,64 +1,38 @@
 import { connectToDatabase } from '@/lib/db/mongodb';
 import { Inventory, InventoryStatus } from '@/models/Inventory';
+import { InventoryHistory, InventoryHistoryAction } from '@/models/InventoryHistory';
 import { BloodGroup, ComponentType } from '@/lib/engine/compatibility';
 import { createAuditLog } from '@/lib/services/audit.service';
-
-export function validateInventoryState(input: {
-  availableUnits: number;
-  reservedUnits: number;
-}) {
-  if (!Number.isFinite(input.availableUnits) || input.availableUnits < 0) {
-    throw new Error('Inventory available quantity must be a non-negative number.');
-  }
-
-  if (!Number.isFinite(input.reservedUnits) || input.reservedUnits < 0) {
-    throw new Error('Inventory reserved quantity must be a non-negative number.');
-  }
-
-  if (input.reservedUnits > input.availableUnits) {
-    throw new Error('Inventory reserved quantity cannot exceed available stock.');
-  }
-
-  return true;
-}
-
-export function reserveInventoryUnits(state: { availableUnits: number; reservedUnits: number }, units: number) {
-  if (!Number.isFinite(units) || units <= 0) {
-    throw new Error('Reservation quantity must be greater than zero.');
-  }
-
-  validateInventoryState(state);
-
-  if (state.availableUnits < units) {
-    throw new Error('Insufficient inventory to reserve the requested quantity.');
-  }
-
-  return {
-    availableUnits: state.availableUnits - units,
-    reservedUnits: state.reservedUnits + units,
-  };
-}
-
-export function releaseInventoryReservation(state: { availableUnits: number; reservedUnits: number }, units: number) {
-  if (!Number.isFinite(units) || units <= 0) {
-    throw new Error('Release quantity must be greater than zero.');
-  }
-
-  validateInventoryState(state);
-
-  if (state.reservedUnits < units) {
-    throw new Error('Cannot release more reserved units than currently reserved.');
-  }
-
-  return {
-    availableUnits: state.availableUnits + units,
-    reservedUnits: state.reservedUnits - units,
-  };
-}
+export { validateInventoryState, reserveInventoryUnits, releaseInventoryReservation } from '@/lib/engine/inventory-policy';
+import { validateInventoryState, reserveInventoryUnits, releaseInventoryReservation } from '@/lib/engine/inventory-policy';
 
 export async function getInventory(bloodBankId: string) {
   await connectToDatabase();
   return await Inventory.find({ bloodBankId }).sort({ bloodGroup: 1, component: 1 });
+}
+
+function inventoryState(item: { availableUnits: number; reservedUnits: number; totalUnits: number; status: InventoryStatus; operationallyUnavailable: boolean }) {
+  return {
+    availableUnits: item.availableUnits,
+    reservedUnits: item.reservedUnits,
+    totalUnits: item.totalUnits,
+    status: item.status,
+    operationallyUnavailable: item.operationallyUnavailable,
+  };
+}
+
+async function recordInventoryHistory(data: {
+  inventoryId: string;
+  bloodBankId: string;
+  actorId?: string;
+  action: InventoryHistoryAction;
+  previousState?: Record<string, unknown>;
+  newState?: Record<string, unknown>;
+  emergencyRequestId?: string;
+  matchId?: string;
+  reason?: string;
+}) {
+  await InventoryHistory.create(data);
 }
 
 export async function updateInventory(
@@ -67,7 +41,7 @@ export async function updateInventory(
   component: ComponentType,
   availableUnits: number,
   reservedUnits: number = 0,
-  options: { actor?: string; actorName?: string; notes?: string; requestId?: string } = {}
+  options: { actor?: string; actorName?: string; notes?: string; requestId?: string; operationallyUnavailable?: boolean } = {}
 ) {
   await connectToDatabase();
 
@@ -76,7 +50,8 @@ export async function updateInventory(
   validateInventoryState({ availableUnits: safeAvailable, reservedUnits: safeReserved });
 
   const existing = await Inventory.findOne({ bloodBankId, bloodGroup, component });
-  const previous = existing ? { availableUnits: existing.availableUnits, reservedUnits: existing.reservedUnits, status: existing.status } : null;
+  const previous = existing ? inventoryState(existing) : undefined;
+  const operationallyUnavailable = options.operationallyUnavailable ?? existing?.operationallyUnavailable ?? false;
 
   const updated = await Inventory.findOneAndUpdate(
     { bloodBankId, bloodGroup, component },
@@ -84,13 +59,24 @@ export async function updateInventory(
       $set: {
         availableUnits: safeAvailable,
         reservedUnits: safeReserved,
+        totalUnits: safeAvailable + safeReserved,
         lastUpdated: new Date(),
-        status: safeAvailable <= 0 ? 'UNAVAILABLE' : safeReserved > 0 ? 'RESERVED' : 'AVAILABLE',
+        operationallyUnavailable,
+        status: operationallyUnavailable || safeAvailable <= 0 ? 'UNAVAILABLE' : safeReserved > 0 ? 'RESERVED' : 'AVAILABLE',
         ...(options.notes ? { notes: options.notes } : {}),
       },
     },
     { new: true, upsert: true, setDefaultsOnInsert: true }
   );
+
+  await recordInventoryHistory({
+    inventoryId: updated._id.toString(),
+    bloodBankId,
+    actorId: options.actor,
+    action: previous ? 'INVENTORY_UPDATED' : 'INVENTORY_CREATED',
+    previousState: previous,
+    newState: inventoryState(updated),
+  });
 
   if (options.actor) {
     await createAuditLog({
@@ -115,7 +101,8 @@ export async function reserveUnits(
   bloodGroup: BloodGroup,
   component: ComponentType,
   units: number,
-  actor?: { userId: string; userName: string; requestId?: string }
+  actor?: { userId: string; userName: string; requestId?: string },
+  scope?: { emergencyRequestId: string; matchId: string }
 ) {
   await connectToDatabase();
 
@@ -136,6 +123,7 @@ export async function reserveUnits(
       $set: {
         availableUnits: nextState.availableUnits,
         reservedUnits: nextState.reservedUnits,
+        totalUnits: nextState.availableUnits + nextState.reservedUnits,
         lastUpdated: new Date(),
         status: nextState.availableUnits <= 0 ? 'UNAVAILABLE' : nextState.reservedUnits > 0 ? 'RESERVED' : 'AVAILABLE',
       },
@@ -144,8 +132,29 @@ export async function reserveUnits(
   );
 
   if (!updated) {
+    await recordInventoryHistory({
+      inventoryId: item._id.toString(),
+      bloodBankId,
+      actorId: actor?.userId,
+      action: 'RESERVATION_FAILED',
+      previousState: previous,
+      reason: 'Inventory changed before the conditional reservation update completed.',
+      emergencyRequestId: scope?.emergencyRequestId,
+      matchId: scope?.matchId,
+    });
     throw new Error('Reservation failed because inventory changed before the update could be applied.');
   }
+
+  await recordInventoryHistory({
+    inventoryId: updated._id.toString(),
+    bloodBankId,
+    actorId: actor?.userId,
+    action: 'INVENTORY_RESERVED',
+    previousState: previous,
+    newState: inventoryState(updated),
+    emergencyRequestId: scope?.emergencyRequestId,
+    matchId: scope?.matchId,
+  });
 
   if (actor) {
     await createAuditLog({
@@ -170,7 +179,8 @@ export async function releaseReservation(
   bloodGroup: BloodGroup,
   component: ComponentType,
   units: number,
-  actor?: { userId: string; userName: string; requestId?: string }
+  actor?: { userId: string; userName: string; requestId?: string },
+  scope?: { emergencyRequestId?: string; matchId?: string; reason?: string }
 ) {
   await connectToDatabase();
 
@@ -190,6 +200,7 @@ export async function releaseReservation(
       $set: {
         availableUnits: nextState.availableUnits,
         reservedUnits: nextState.reservedUnits,
+        totalUnits: nextState.availableUnits + nextState.reservedUnits,
         lastUpdated: new Date(),
         status: nextState.availableUnits <= 0 ? 'UNAVAILABLE' : nextState.reservedUnits > 0 ? 'RESERVED' : 'AVAILABLE',
       },
@@ -200,6 +211,18 @@ export async function releaseReservation(
   if (!updated) {
     throw new Error('Reservation release failed because inventory was no longer eligible.');
   }
+
+  await recordInventoryHistory({
+    inventoryId: updated._id.toString(),
+    bloodBankId,
+    actorId: actor?.userId,
+    action: 'INVENTORY_RELEASED',
+    previousState: previous,
+    newState: inventoryState(updated),
+    emergencyRequestId: scope?.emergencyRequestId,
+    matchId: scope?.matchId,
+    reason: scope?.reason,
+  });
 
   if (actor) {
     await createAuditLog({
@@ -217,6 +240,36 @@ export async function releaseReservation(
   }
 
   return updated;
+}
+
+export async function setInventoryAvailability(
+  bloodBankId: string,
+  bloodGroup: BloodGroup,
+  component: ComponentType,
+  operationallyUnavailable: boolean,
+  actor?: { userId: string; userName: string }
+) {
+  await connectToDatabase();
+  const item = await Inventory.findOne({ bloodBankId, bloodGroup, component });
+  if (!item) throw new Error('Inventory item not found');
+  const previous = inventoryState(item);
+  item.operationallyUnavailable = operationallyUnavailable;
+  item.lastUpdated = new Date();
+  await item.save();
+  await recordInventoryHistory({
+    inventoryId: item._id.toString(),
+    bloodBankId,
+    actorId: actor?.userId,
+    action: operationallyUnavailable ? 'INVENTORY_MARKED_UNAVAILABLE' : 'INVENTORY_RESTORED',
+    previousState: previous,
+    newState: inventoryState(item),
+  });
+  return item;
+}
+
+export async function getInventoryHistory(bloodBankId: string, inventoryId?: string) {
+  await connectToDatabase();
+  return InventoryHistory.find({ bloodBankId, ...(inventoryId ? { inventoryId } : {}) }).sort({ createdAt: -1 }).limit(200);
 }
 
 export async function getAvailableInventory(
@@ -247,6 +300,7 @@ export async function bulkUpdateInventory(
         $set: {
           availableUnits: item.availableUnits,
           reservedUnits: 0,
+          totalUnits: item.availableUnits,
           lastUpdated: new Date(),
           status: (item.availableUnits <= 0 ? 'UNAVAILABLE' : 'AVAILABLE') as InventoryStatus,
         },

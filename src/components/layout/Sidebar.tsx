@@ -67,6 +67,12 @@ const navItems: NavItem[] = [
     roles: ['ADMIN', 'HOSPITAL'],
   },
   {
+    label: 'My Availability',
+    href: '/donor/availability',
+    icon: Activity,
+    roles: ['DONOR'],
+  },
+  {
     label: 'Analytics',
     href: '/analytics',
     icon: BarChart3,
@@ -81,6 +87,12 @@ const navItems: NavItem[] = [
     label: 'Verification',
     href: '/verification',
     icon: Shield,
+    roles: ['ADMIN'],
+  },
+  {
+    label: 'Blood Bank Status',
+    href: '/blood-banks/status',
+    icon: Activity,
     roles: ['ADMIN'],
   },
   {

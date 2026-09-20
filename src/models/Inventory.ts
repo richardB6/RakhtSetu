@@ -10,6 +10,7 @@ export interface IInventory extends Document {
   reservedUnits: number;
   totalUnits: number;
   status: InventoryStatus;
+  operationallyUnavailable: boolean;
   lastUpdated: Date;
   lastVerified?: Date;
   expiryAlertThresholdDays?: number;
@@ -28,6 +29,7 @@ const InventorySchema = new Schema<IInventory>(
     reservedUnits: { type: Number, default: 0, min: 0 },
     totalUnits: { type: Number, default: 0 },
     status: { type: String, enum: ['AVAILABLE', 'RESERVED', 'UNAVAILABLE'], default: 'AVAILABLE' },
+    operationallyUnavailable: { type: Boolean, default: false },
     lastUpdated: { type: Date, required: true },
     lastVerified: { type: Date },
     expiryAlertThresholdDays: { type: Number },
@@ -42,8 +44,11 @@ InventorySchema.index({ bloodGroup: 1, component: 1, availableUnits: 1 });
 InventorySchema.index({ availableUnits: 1 });
 
 InventorySchema.pre('save', function () {
+  if (this.availableUnits < 0 || this.reservedUnits < 0 || this.reservedUnits > this.availableUnits) {
+    throw new Error('Inventory quantities must be non-negative and reserved units cannot exceed available units.');
+  }
   this.totalUnits = this.availableUnits + this.reservedUnits;
-  if (this.availableUnits <= 0) {
+  if (this.operationallyUnavailable || this.availableUnits <= 0) {
     this.status = 'UNAVAILABLE';
   } else if (this.reservedUnits > 0) {
     this.status = 'RESERVED';

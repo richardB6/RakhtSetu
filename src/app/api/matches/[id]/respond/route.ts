@@ -15,6 +15,8 @@ export const POST = withAuth(async (req, context) => {
     const result = await respondToMatch(id, context.user.userId, accept, declineReason);
     return NextResponse.json({ success: true, data: result });
   } catch (error: any) {
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Unable to respond to match';
+    const status = /available|reservation|inventory|already responded/i.test(message) ? 409 : 500;
+    return NextResponse.json({ success: false, message }, { status });
   }
 }, { roles: ['BLOOD_BANK', 'DONOR'] });

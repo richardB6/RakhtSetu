@@ -6,6 +6,7 @@ import { createAuditLog } from './audit.service';
 import { isValidTransition, ACTIVE_STATUSES, RequestStatus, SeverityLevel, SEVERITY_CONFIG } from '@/lib/engine/compatibility';
 import { DashboardStats } from '@/types';
 import mongoose from 'mongoose';
+import { fulfillRequestReservations, releaseRequestReservations } from '@/lib/services/reservation.service';
 
 export async function createEmergencyRequest(data: any, hospitalId: string, userId: string) {
   await connectToDatabase();
@@ -167,6 +168,12 @@ export async function updateEmergencyStatus(id: string, newStatus: RequestStatus
   }
 
   await request.save();
+
+  if (newStatus === 'CANCELLED' || newStatus === 'EXPIRED') {
+    await releaseRequestReservations(request._id.toString(), reason || newStatus, { userId, userName: userId });
+  } else if (newStatus === 'FULFILLED') {
+    await fulfillRequestReservations(request._id.toString(), { userId, userName: userId });
+  }
 
   await createAuditLog({
     userId,
