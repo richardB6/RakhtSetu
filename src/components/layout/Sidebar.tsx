@@ -36,6 +36,13 @@ const navItems: NavItem[] = [
     label: 'Command Center',
     href: '/command-center',
     icon: LayoutDashboard,
+    roles: ['ADMIN', 'HOSPITAL', 'BLOOD_BANK'],
+  },
+  {
+    label: 'Donor Home',
+    href: '/donor',
+    icon: Heart,
+    roles: ['DONOR'],
   },
   {
     label: 'Emergencies',

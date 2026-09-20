@@ -20,4 +20,4 @@ export const GET = withAuth(async (req: NextRequest, context) => {
   } catch (error) {
     return NextResponse.json({ success: false, message: error instanceof Error ? error.message : 'Unable to load command center' }, { status: 500 });
   }
-}, { roles: ['ADMIN', 'HOSPITAL', 'BLOOD_BANK', 'DONOR'] });
+}, { roles: ['ADMIN', 'HOSPITAL', 'BLOOD_BANK'] });

@@ -4,7 +4,8 @@ import { COOKIE_NAMES } from '@/lib/auth/cookies';
 
 const PROTECTED_ROUTES = [
   { prefix: '/dashboard', roles: ['ADMIN', 'HOSPITAL', 'BLOOD_BANK', 'DONOR'] },
-  { prefix: '/command-center', roles: ['ADMIN', 'HOSPITAL', 'BLOOD_BANK', 'DONOR'] },
+  { prefix: '/command-center', roles: ['ADMIN', 'HOSPITAL', 'BLOOD_BANK'] },
+  { prefix: '/donor', roles: ['DONOR'] },
   { prefix: '/emergencies', roles: ['ADMIN', 'HOSPITAL', 'BLOOD_BANK', 'DONOR'] },
   { prefix: '/map', roles: ['ADMIN', 'HOSPITAL', 'BLOOD_BANK', 'DONOR'] },
   { prefix: '/inventory', roles: ['ADMIN', 'BLOOD_BANK'] },
@@ -31,7 +32,7 @@ export async function middleware(request: NextRequest) {
   // Redirect authenticated users away from auth pages
   const isAuthPage = AUTH_PAGES.some((page) => pathname.startsWith(page));
   if (isAuthPage && user) {
-    return NextResponse.redirect(new URL('/command-center', request.url));
+    return NextResponse.redirect(new URL(user.role === 'DONOR' ? '/donor' : '/command-center', request.url));
   }
 
   // Check protected routes
@@ -44,6 +45,9 @@ export async function middleware(request: NextRequest) {
     }
 
     if (!matchedRoute.roles.includes(user.role)) {
+      if (pathname.startsWith('/command-center') && user.role === 'DONOR') {
+        return NextResponse.redirect(new URL('/donor', request.url));
+      }
       return NextResponse.redirect(new URL('/unauthorized', request.url));
     }
 
