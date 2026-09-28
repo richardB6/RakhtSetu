@@ -13,36 +13,46 @@ function LoginForm() {
   const { login } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get('callbackUrl') || '/command-center';
+  const callbackUrl = searchParams.get('callbackUrl') || null;
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setInfo('');
     setLoading(true);
 
-    const result = await login(email, password);
+    const result = await login(email.trim().toLowerCase(), password);
 
     if (result.success) {
-      router.push(callbackUrl);
+      try {
+        const meRes = await fetch('/api/auth/me');
+        const meData = await meRes.json();
+        if (meData.success) {
+          const role = meData.data?.user?.role;
+          const verificationStatus = meData.data?.user?.verificationStatus;
+          if (verificationStatus === 'PENDING') {
+            setInfo('Your account is pending admin verification. You can view your dashboard but some features may be restricted.');
+          }
+          const destination = callbackUrl || (role === 'DONOR' ? '/donor' : '/command-center');
+          router.push(destination);
+        } else {
+          router.push(callbackUrl || '/command-center');
+        }
+      } catch {
+        router.push(callbackUrl || '/command-center');
+      }
     } else {
-      setError(result.message || 'Login failed');
+      setError(result.message || 'Login failed. Please check your credentials.');
       setLoading(false);
     }
-
   };
-
-  const demoAccounts = [
-    { label: 'Hospital', email: 'hospital@demo.rakthsetu.in', password: 'Demo@Hospital1' },
-    { label: 'Blood Bank', email: 'bloodbank@demo.rakthsetu.in', password: 'Demo@BloodBank1' },
-    { label: 'Donor', email: 'donor@demo.rakthsetu.in', password: 'Demo@Donor1' },
-    { label: 'Admin', email: 'admin@demo.rakthsetu.in', password: 'Demo@Admin1' },
-  ];
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
@@ -61,7 +71,7 @@ function LoginForm() {
         </div>
 
         {/* Login Form */}
-        <div className="rounded-lg border border-border bg-card p-6 space-y-4">
+        <div className="rounded-lg border border-border bg-card p-6 space-y-4 shadow-sm">
           <div className="space-y-1">
             <h2 className="text-lg font-semibold">Sign In</h2>
             <p className="text-xs text-muted-foreground">
@@ -73,6 +83,11 @@ function LoginForm() {
             {error && (
               <div className="rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2">
                 <p className="text-xs text-destructive">{error}</p>
+              </div>
+            )}
+            {info && (
+              <div className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2">
+                <p className="text-xs text-amber-700">{info}</p>
               </div>
             )}
 
@@ -87,6 +102,7 @@ function LoginForm() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                autoComplete="email"
                 className="h-9 text-sm"
               />
             </div>
@@ -103,11 +119,13 @@ function LoginForm() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
+                  autoComplete="current-password"
                   className="h-9 text-sm pr-9"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                   className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 >
                   {showPassword ? (
@@ -138,41 +156,10 @@ function LoginForm() {
           <div className="text-center">
             <p className="text-xs text-muted-foreground">
               Need an account?{' '}
-              <Link href="/register" className="text-primary hover:underline">
+              <Link href="/register" className="text-primary hover:underline font-medium">
                 Register
               </Link>
             </p>
-          </div>
-        </div>
-
-        {/* Demo Accounts */}
-        <div className="rounded-lg border border-border bg-card p-4 space-y-3">
-          <div className="flex items-center gap-2">
-            <div className="h-px flex-1 bg-border" />
-            <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
-              Demo Accounts
-            </span>
-            <div className="h-px flex-1 bg-border" />
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            {demoAccounts.map((account) => (
-              <button
-                key={account.label}
-                onClick={() => {
-                  setEmail(account.email);
-                  setPassword(account.password);
-                }}
-                className="text-left px-3 py-2 rounded-md border border-border hover:bg-accent transition-colors"
-              >
-                <p className="text-xs font-medium text-foreground">
-                  {account.label}
-                </p>
-                <p className="text-[10px] text-muted-foreground truncate">
-                  {account.email}
-                </p>
-              </button>
-            ))}
           </div>
         </div>
       </div>

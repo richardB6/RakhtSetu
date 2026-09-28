@@ -6,13 +6,14 @@ const PROTECTED_ROUTES = [
   { prefix: '/dashboard', roles: ['ADMIN', 'HOSPITAL', 'BLOOD_BANK', 'DONOR'] },
   { prefix: '/command-center', roles: ['ADMIN', 'HOSPITAL', 'BLOOD_BANK'] },
   { prefix: '/donor', roles: ['DONOR'] },
+  { prefix: '/emergencies/new', roles: ['ADMIN', 'HOSPITAL'] },
   { prefix: '/emergencies', roles: ['ADMIN', 'HOSPITAL', 'BLOOD_BANK'] },
   { prefix: '/map', roles: ['ADMIN', 'HOSPITAL', 'BLOOD_BANK'] },
   { prefix: '/inventory', roles: ['ADMIN', 'BLOOD_BANK'] },
   { prefix: '/donor/availability', roles: ['DONOR'] },
   { prefix: '/blood-bank/status', roles: ['BLOOD_BANK', 'ADMIN'] },
   { prefix: '/blood-banks/status', roles: ['ADMIN'] },
-  { prefix: '/donors', roles: ['ADMIN', 'HOSPITAL'] },
+  { prefix: '/donors', roles: ['ADMIN', 'HOSPITAL', 'BLOOD_BANK'] },
   { prefix: '/analytics', roles: ['ADMIN', 'HOSPITAL', 'BLOOD_BANK'] },
   { prefix: '/audit-logs', roles: ['ADMIN'] },
   { prefix: '/verification', roles: ['ADMIN'] },
@@ -51,7 +52,8 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL('/unauthorized', request.url));
     }
 
-    if (user.verificationStatus !== 'VERIFIED') {
+    // SUSPENDED or REJECTED accounts cannot access the platform
+    if (user.verificationStatus === 'REJECTED' || user.verificationStatus === 'SUSPENDED') {
       return NextResponse.redirect(new URL('/unauthorized', request.url));
     }
 

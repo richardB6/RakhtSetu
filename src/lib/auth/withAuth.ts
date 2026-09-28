@@ -16,6 +16,8 @@ export type AuthenticatedHandler = (
 
 interface AuthOptions {
   roles?: UserRole[];
+  /** If true, rejects PENDING/SUSPENDED/REJECTED accounts (default: false - PENDING allowed through) */
+  requireVerified?: boolean;
 }
 
 export function withAuth(
@@ -50,13 +52,28 @@ export function withAuth(
       const currentUser = await User.findById(decoded.userId).select(
         '_id email name role isActive verificationStatus'
       );
+      if (!currentUser || !currentUser.isActive) {
+        return NextResponse.json(
+          { success: false, message: 'Account not found or has been deactivated.' },
+          { status: 403 }
+        );
+      }
+
+      // Suspended or rejected accounts cannot use any API
       if (
-        !currentUser ||
-        !currentUser.isActive ||
-        currentUser.verificationStatus !== 'VERIFIED'
+        currentUser.verificationStatus === 'SUSPENDED' ||
+        currentUser.verificationStatus === 'REJECTED'
       ) {
         return NextResponse.json(
-          { success: false, message: 'Account verification is required.' },
+          { success: false, message: 'Account has been suspended or rejected.' },
+          { status: 403 }
+        );
+      }
+
+      // Routes that explicitly require full verification
+      if (options.requireVerified && currentUser.verificationStatus !== 'VERIFIED') {
+        return NextResponse.json(
+          { success: false, message: 'Account verification is required for this operation.' },
           { status: 403 }
         );
       }

@@ -14,6 +14,21 @@ import {
 import { formatZodErrors, validateRequestBody } from '@/lib/validations/common';
 import { Verification } from '@/models/Verification';
 import { createAuditLog } from '@/lib/services/audit.service';
+import { env } from '@/lib/config/env';
+import { signAccessToken, signRefreshToken } from '@/lib/auth/jwt';
+import { setAuthCookies } from '@/lib/auth/cookies';
+
+/**
+ * Determine the initial verification status for a new account.
+ * - DONOR: always auto-verified (individual users; no regulatory vetting required at registration).
+ * - HOSPITAL / BLOOD_BANK: auto-verified in DEMO_MODE so the platform can be tested
+ *   end-to-end without a running admin workflow; PENDING in production.
+ */
+function initialVerificationStatus(role: string): 'VERIFIED' | 'PENDING' {
+  if (role === 'DONOR') return 'VERIFIED';
+  if (env.DEMO_MODE === 'true') return 'VERIFIED';
+  return 'PENDING';
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -21,6 +36,10 @@ export async function POST(req: NextRequest) {
     if (!validation.success) return validation.response;
 
     const { email, password, name, phone, role, profile } = validation.data;
+
+    // Normalize email to lowercase
+    const normalizedEmail = email.trim().toLowerCase();
+
     if (role === 'ADMIN') {
       return NextResponse.json(
         { success: false, message: 'Administrator accounts can only be created through the verification workflow.' },
@@ -34,22 +53,26 @@ export async function POST(req: NextRequest) {
         { status: 422 }
       );
     }
+
+    // Validate the role-specific profile
     const validationResult =
       role === 'HOSPITAL'
         ? hospitalProfileSchema.safeParse(profile)
         : role === 'BLOOD_BANK'
           ? bloodBankProfileSchema.safeParse(profile)
           : donorProfileSchema.safeParse(profile);
+
     if (!validationResult.success) {
       return NextResponse.json(
         { success: false, message: 'Invalid role-specific profile.', errors: formatZodErrors(validationResult.error) },
         { status: 422 }
       );
     }
+
     await connectToDatabase();
 
-    // Check if user already exists
-    const existingUser = await User.findOne({ email });
+    // Duplicate email check (case-insensitive)
+    const existingUser = await User.findOne({ email: normalizedEmail });
     if (existingUser) {
       return NextResponse.json(
         { success: false, message: 'An account with this email already exists.' },
@@ -60,53 +83,84 @@ export async function POST(req: NextRequest) {
     // Hash password
     const hashedPassword = await hashPassword(password);
 
-    // Create user
+    // Create user record
+    const verificationStatus = initialVerificationStatus(role);
     const user = await User.create({
-      email,
+      email: normalizedEmail,
       password: hashedPassword,
-      name,
-      phone,
+      name: name.trim(),
+      phone: phone.trim(),
       role,
-      verificationStatus: 'PENDING',
+      verificationStatus,
     });
 
+    // Create role-specific profile
     let profileDocument;
     if (role === 'HOSPITAL') {
       const parsedProfile = hospitalProfileSchema.safeParse(profile);
       if (!parsedProfile.success) {
-        return NextResponse.json({ success: false, message: 'Invalid role-specific profile.', errors: formatZodErrors(parsedProfile.error) }, { status: 422 });
+        await User.findByIdAndDelete(user._id); // rollback
+        return NextResponse.json({ success: false, message: 'Invalid hospital profile.', errors: formatZodErrors(parsedProfile.error) }, { status: 422 });
       }
       profileDocument = await Hospital.create({ ...parsedProfile.data, userId: user._id });
     } else if (role === 'BLOOD_BANK') {
       const parsedProfile = bloodBankProfileSchema.safeParse(profile);
       if (!parsedProfile.success) {
-        return NextResponse.json({ success: false, message: 'Invalid role-specific profile.', errors: formatZodErrors(parsedProfile.error) }, { status: 422 });
+        await User.findByIdAndDelete(user._id); // rollback
+        return NextResponse.json({ success: false, message: 'Invalid blood bank profile.', errors: formatZodErrors(parsedProfile.error) }, { status: 422 });
       }
       profileDocument = await BloodBank.create({ ...parsedProfile.data, userId: user._id });
     } else {
       const parsedProfile = donorProfileSchema.safeParse(profile);
       if (!parsedProfile.success) {
-        return NextResponse.json({ success: false, message: 'Invalid role-specific profile.', errors: formatZodErrors(parsedProfile.error) }, { status: 422 });
+        await User.findByIdAndDelete(user._id); // rollback
+        return NextResponse.json({ success: false, message: 'Invalid donor profile.', errors: formatZodErrors(parsedProfile.error) }, { status: 422 });
       }
-      profileDocument = await Donor.create({ ...parsedProfile.data, userId: user._id });
+      // Ensure isAvailable matches availabilityStatus
+      const availabilityStatus = parsedProfile.data.availabilityStatus || 'AVAILABLE';
+      profileDocument = await Donor.create({
+        ...parsedProfile.data,
+        userId: user._id,
+        availabilityStatus,
+        isAvailable: availabilityStatus === 'AVAILABLE',
+      });
     }
+
+    // Link profile to user
     user.profileId = profileDocument._id;
     await user.save();
+
+    // Create verification record
     await Verification.create({
       userId: user._id,
       entityType: role,
-      status: 'PENDING',
+      status: verificationStatus,
     });
+
     await createAuditLog({
       userId: user._id.toString(),
       userRole: role,
       userName: user.name,
-      action: 'VERIFICATION_CREATED',
-      entityType: 'VERIFICATION',
+      action: 'REGISTRATION',
+      entityType: 'USER',
       entityId: user._id.toString(),
-      description: `Pending verification created for ${role}`,
-      newState: { status: 'PENDING', entityType: role },
+      description: `New ${role} account registered: ${normalizedEmail} (status=${verificationStatus})`,
+      newState: { status: verificationStatus, entityType: role },
     });
+
+    // Sign auth cookies so the client is immediately logged in after registration
+    // (allows AuthContext.refreshUser() to succeed)
+    const accessToken = await signAccessToken({
+      userId: user._id.toString(),
+      email: user.email,
+      role: user.role,
+      name: user.name,
+      verificationStatus: user.verificationStatus,
+    });
+    const refreshToken = await signRefreshToken({
+      userId: user._id.toString(),
+    });
+    await setAuthCookies(accessToken, refreshToken);
 
     return NextResponse.json(
       {
@@ -127,7 +181,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error('[Register] Error:', error);
     return NextResponse.json(
-      { success: false, message: 'Internal server error' },
+      { success: false, message: 'Registration failed. Please try again.' },
       { status: 500 }
     );
   }

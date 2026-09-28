@@ -140,8 +140,8 @@ export default function NotificationsPage() {
       {filtered.length > 0 && (
         <div className="mt-8 flex justify-center">
           <div className="flex gap-2">
-            <button className="px-3 py-1 bg-slate-800 border border-slate-700 rounded text-sm text-slate-400 hover:text-white disabled:opacity-50" disabled>Previous</button>
-            <button className="px-3 py-1 bg-slate-800 border border-slate-700 rounded text-sm text-slate-400 hover:text-white">Next</button>
+            <button className="px-3 py-1 border border-border rounded text-sm text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-50 transition-colors" disabled>Previous</button>
+            <button className="px-3 py-1 border border-border rounded text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">Next</button>
           </div>
         </div>
       )}

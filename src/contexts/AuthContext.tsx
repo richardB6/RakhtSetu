@@ -25,6 +25,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<IUser | null>(null);
   const [loading, setLoading] = useState(true);
 
+  /**
+   * Canonical user refresh — always fetches from /api/auth/me which returns
+   * the full IUser shape from the database (including profileId, verificationStatus, etc.)
+   */
   const refreshUser = useCallback(async () => {
     try {
       const res = await fetch('/api/auth/me');
@@ -59,7 +63,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = await res.json();
 
       if (data.success) {
-        setUser(data.data.user);
+        // Refresh from /api/auth/me to get canonical full user object
+        await refreshUser();
         return { success: true };
       }
       return { success: false, message: data.message };
@@ -85,7 +90,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = await res.json();
 
       if (data.success) {
-        setUser(data.data.user);
+        // After successful registration the server sets auth cookies.
+        // Fetch the canonical user from /api/auth/me to populate auth state correctly.
+        await refreshUser();
         return { success: true };
       }
       return { success: false, message: data.message };

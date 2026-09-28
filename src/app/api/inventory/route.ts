@@ -73,3 +73,58 @@ export const PATCH = withAuth(async (req, context) => {
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });
   }
 }, { roles: ['BLOOD_BANK'] });
+
+/**
+ * POST /api/inventory
+ * Initialize all blood group × component slots with 0 units for this blood bank.
+ * Idempotent — existing records are NOT overwritten.
+ * Blood bank operators can then set actual quantities via PATCH.
+ */
+export const POST = withAuth(async (_req, context) => {
+  try {
+    await connectToDatabase();
+    const bloodBank = await getOwnedBloodBank(context.user.userId);
+
+    const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'] as const;
+    const COMPONENT_TYPES = ['WHOLE_BLOOD', 'PRBC', 'PLATELETS_RDP', 'PLATELETS_SDP', 'FFP', 'CRYO'] as const;
+
+    const now = new Date();
+    const operations = [];
+
+    for (const bloodGroup of BLOOD_GROUPS) {
+      for (const component of COMPONENT_TYPES) {
+        operations.push({
+          updateOne: {
+            filter: { bloodBankId: bloodBank._id, bloodGroup, component },
+            update: {
+              $setOnInsert: {
+                bloodBankId: bloodBank._id,
+                bloodGroup,
+                component,
+                availableUnits: 0,
+                reservedUnits: 0,
+                totalUnits: 0,
+                status: 'UNAVAILABLE' as const,
+                operationallyUnavailable: false,
+                lastUpdated: now,
+              },
+            },
+            upsert: true,
+          },
+        });
+      }
+    }
+
+    const result = await Inventory.bulkWrite(operations);
+    const created = result.upsertedCount;
+    const existing = BLOOD_GROUPS.length * COMPONENT_TYPES.length - created;
+
+    return NextResponse.json({
+      success: true,
+      message: `Inventory initialized. ${created} new slot(s) created, ${existing} existing slot(s) unchanged.`,
+      data: { created, unchanged: existing },
+    });
+  } catch (error: any) {
+    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+  }
+}, { roles: ['BLOOD_BANK'] });

@@ -43,6 +43,7 @@ export default function InventoryPage() {
   const { user } = useAuth();
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [profileMissing, setProfileMissing] = useState(false);
   const [saving, setSaving] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Record<string, number>>({});
   const [filterComponent, setFilterComponent] = useState<string>('all');
@@ -55,15 +56,23 @@ export default function InventoryPage() {
   const [reservations, setReservations] = useState<ActiveReservation[]>([]);
   const [matchId, setMatchId] = useState('');
   const [reservationSaving, setReservationSaving] = useState(false);
+  const [initializing, setInitializing] = useState(false);
 
   const fetchInventory = useCallback(async () => {
     setError(null);
+    setProfileMissing(false);
     try {
       const res = await fetch('/api/inventory');
-      if (res.ok) {
-        const data = await res.json();
-        setInventory(data.data || []);
+      const data = await res.json();
+      if (!res.ok) {
+        if (data.message?.includes('profile not found')) {
+          setProfileMissing(true);
+        } else {
+          setError(data.message || 'Failed to fetch inventory');
+        }
+        return;
       }
+      setInventory(data.data || []);
       const statusRes = await fetch('/api/blood-bank/status');
       if (statusRes.ok) {
         const statusData = await statusRes.json();
@@ -144,6 +153,23 @@ export default function InventoryPage() {
     fetchInventory();
   }, [fetchInventory]);
 
+  /** Scaffold all 48 blood group × component slots with 0 units (idempotent) */
+  const initializeInventory = async () => {
+    setInitializing(true);
+    setMessage(null);
+    try {
+      const res = await fetch('/api/inventory', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to initialize inventory');
+      setMessage(data.message);
+      await fetchInventory();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to initialize inventory');
+    } finally {
+      setInitializing(false);
+    }
+  };
+
   const handleUpdate = async (item: InventoryItem) => {
     const newUnits = editValues[item._id];
     if (newUnits === undefined || newUnits === item.availableUnits) return;
@@ -212,6 +238,26 @@ export default function InventoryPage() {
           {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-24" />)}
         </div>
         <Skeleton className="h-96" />
+      </div>
+    );
+  }
+
+  if (profileMissing) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-xl font-bold flex items-center gap-2">
+          <Package className="w-5 h-5 text-primary" /> Blood Bank Inventory
+        </h1>
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-6 space-y-3">
+          <div className="flex items-center gap-2 text-amber-700">
+            <AlertTriangle className="h-5 w-5 shrink-0" />
+            <p className="font-semibold">Blood bank profile not found</p>
+          </div>
+          <p className="text-sm text-amber-700">
+            Your blood bank profile could not be located. This can happen if registration did not complete
+            successfully. Please log out and register again, or contact support.
+          </p>
+        </div>
       </div>
     );
   }

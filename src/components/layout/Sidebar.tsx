@@ -20,6 +20,7 @@ import {
   Heart,
   Package,
   Activity,
+  Users,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
@@ -71,8 +72,8 @@ const navItems: NavItem[] = [
   {
     label: 'Donor Network',
     href: '/donors',
-    icon: Heart,
-    roles: ['ADMIN', 'HOSPITAL'],
+    icon: Users,
+    roles: ['ADMIN', 'HOSPITAL', 'BLOOD_BANK'],
   },
   {
     label: 'My Availability',

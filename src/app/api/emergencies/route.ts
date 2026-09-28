@@ -4,6 +4,7 @@ import { getEmergencyRequests, createEmergencyRequest } from '@/lib/services/eme
 import { createEmergencySchema } from '@/lib/validations/emergency.schema';
 import { Hospital } from '@/models/Hospital';
 import { connectToDatabase } from '@/lib/db/mongodb';
+import { runMatchingEngine } from '@/lib/services/matching.service';
 
 export const GET = withAuth(async (req, context) => {
   try {
@@ -49,6 +50,16 @@ export const POST = withAuth(async (req, context) => {
     }
 
     const result = await createEmergencyRequest(validatedData, hospital._id.toString(), context.user.userId);
+
+    // Fire-and-forget: run matching engine asynchronously so the HTTP response
+    // is not blocked. Notifications are persisted to DB so offline recipients
+    // will see them when they next log in.
+    void runMatchingEngine(result._id.toString(), context.user.userId, false).catch(
+      (matchErr: unknown) => {
+        console.error('[Emergency POST] Matching engine error (non-fatal):', matchErr);
+      }
+    );
+
     return NextResponse.json({ success: true, data: result }, { status: 201 });
   } catch (error: any) {
     if (error.name === 'ZodError') {
@@ -56,4 +67,4 @@ export const POST = withAuth(async (req, context) => {
     }
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });
   }
-}, { roles: ['HOSPITAL', 'ADMIN'] });
+}, { roles: ['HOSPITAL', 'ADMIN'], requireVerified: true });

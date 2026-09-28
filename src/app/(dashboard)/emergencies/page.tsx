@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Search, Eye, Filter } from 'lucide-react';
+import { Search, Eye, AlertCircle, RefreshCw, Plus } from 'lucide-react';
 import { 
   Table, 
   TableBody, 
@@ -14,13 +14,16 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useAuth } from '@/contexts/AuthContext';
 import { IEmergencyRequest } from '@/types';
 import { COMPONENT_LABELS, BLOOD_GROUPS, COMPONENT_TYPES, SEVERITY_LEVELS, REQUEST_STATUSES } from '@/lib/engine/compatibility';
 import { elapsedTime } from '@/lib/utils/date';
 
 export default function EmergenciesListPage() {
+  const { user } = useAuth();
   const [requests, setRequests] = useState<IEmergencyRequest[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   
   // Filters
   const [search, setSearch] = useState('');
@@ -29,9 +32,9 @@ export default function EmergenciesListPage() {
   const [bloodGroup, setBloodGroup] = useState('ALL');
   const [component, setComponent] = useState('ALL');
 
-  const fetchRequests = async () => {
+  const fetchRequests = useCallback(async () => {
+    setError(null);
     try {
-      // Build query string
       const params = new URLSearchParams();
       if (search) params.append('search', search);
       if (severity !== 'ALL') params.append('severity', severity);
@@ -40,29 +43,32 @@ export default function EmergenciesListPage() {
       if (component !== 'ALL') params.append('component', component);
 
       const res = await fetch(`/api/emergencies?${params.toString()}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          setRequests(data.data);
-        }
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        // Show a clear error (e.g. "Hospital profile not found")
+        setError(data.message || 'Unable to load emergency requests.');
+        setRequests([]);
+      } else {
+        setRequests(data.data || []);
       }
-    } catch (error) {
-      console.error('Failed to fetch emergencies', error);
+    } catch (err) {
+      setError('Network error. Please check your connection and try again.');
+      console.error('Failed to fetch emergencies', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [search, severity, status, bloodGroup, component]);
 
-  // Initial fetch and polling
   useEffect(() => {
     fetchRequests();
-    const interval = setInterval(fetchRequests, 10000); // 10s polling
+    const interval = setInterval(fetchRequests, 15000);
     return () => clearInterval(interval);
-  }, [search, severity, status, bloodGroup, component]);
+  }, [fetchRequests]);
 
   const getPriorityColor = (level: string) => {
     switch(level) {
-      case 'CRITICAL': return 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]';
+      case 'CRITICAL': return 'bg-red-500';
       case 'HIGH': return 'bg-amber-500';
       case 'NORMAL': return 'bg-blue-500';
       default: return 'bg-slate-300';
@@ -70,67 +76,98 @@ export default function EmergenciesListPage() {
   };
 
   const getStatusBadge = (reqStatus: string) => {
-    let classes = "px-2.5 py-0.5 rounded-full text-xs font-medium border ";
+    let classes = 'px-2.5 py-0.5 rounded-full text-xs font-medium border ';
     switch(reqStatus) {
-      case 'FULFILLED': classes += "bg-emerald-50 text-emerald-700 border-emerald-200"; break;
-      case 'CANCELLED': classes += "bg-slate-100 text-slate-700 border-slate-200"; break;
-      case 'MATCHING': classes += "bg-blue-50 text-blue-700 border-blue-200 animate-pulse"; break;
-      case 'ESCALATED': classes += "bg-red-50 text-red-700 border-red-200"; break;
-      default: classes += "bg-amber-50 text-amber-700 border-amber-200";
+      case 'FULFILLED': classes += 'bg-emerald-50 text-emerald-700 border-emerald-200'; break;
+      case 'CANCELLED': classes += 'bg-slate-100 text-slate-600 border-slate-200'; break;
+      case 'MATCHING': classes += 'bg-blue-50 text-blue-700 border-blue-200'; break;
+      case 'RESOURCES_NOTIFIED': classes += 'bg-violet-50 text-violet-700 border-violet-200'; break;
+      case 'ESCALATED': classes += 'bg-red-50 text-red-700 border-red-200'; break;
+      default: classes += 'bg-amber-50 text-amber-700 border-amber-200';
     }
-    return <span className={classes}>{reqStatus.replace('_', ' ')}</span>;
+    return <span className={classes}>{reqStatus.replace(/_/g, ' ')}</span>;
   };
 
+  const canCreate = user?.role === 'HOSPITAL' || user?.role === 'ADMIN';
+
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+    <div className="container mx-auto px-4 py-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Emergency Board</h1>
-          <p className="text-sm text-muted-foreground">Real-time tracking of all active network requests.</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            Real-time tracking of emergency blood requests.
+          </p>
         </div>
-        <Link href="/emergencies/new">
-          <Button className="bg-red-600 hover:bg-red-700">Create Emergency Request</Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => { setLoading(true); fetchRequests(); }}>
+            <RefreshCw className="w-4 h-4 mr-1" /> Refresh
+          </Button>
+          {canCreate && (
+            <Link href="/emergencies/new">
+              <Button className="gap-2">
+                <Plus className="w-4 h-4" />
+                Create Request
+              </Button>
+            </Link>
+          )}
+        </div>
       </div>
 
+      {/* Error state */}
+      {error && (
+        <div className="mb-6 flex items-start gap-3 rounded-md border border-destructive/30 bg-destructive/10 p-4">
+          <AlertCircle className="h-5 w-5 shrink-0 text-destructive mt-0.5" />
+          <div>
+            <p className="font-medium text-sm text-destructive">Unable to load emergencies</p>
+            <p className="text-xs text-destructive/80 mt-1">{error}</p>
+            {error.includes('profile not found') && canCreate && (
+              <p className="text-xs text-destructive/80 mt-2">
+                Your hospital profile may not have been set up correctly. Try logging out and registering again, or contact support.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Filters */}
-      <div className="ops-panel mb-6 flex flex-wrap items-center gap-4 rounded-md p-4">
+      <div className="ops-panel mb-6 flex flex-wrap items-center gap-3 rounded-md p-4">
         <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <Input 
-            placeholder="Search Request ID..." 
-            className="pl-9" 
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            placeholder="Search request ID or city..."
+            className="pl-9 h-9"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
         
-        <Select value={severity} onValueChange={(value) => setSeverity(value ?? '')}>
-          <SelectTrigger className="w-[140px]"><SelectValue placeholder="Severity" /></SelectTrigger>
+        <Select value={severity} onValueChange={(value) => setSeverity(value ?? 'ALL')}>
+          <SelectTrigger className="w-[140px] h-9"><SelectValue placeholder="Severity" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="ALL">All Severities</SelectItem>
             {SEVERITY_LEVELS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
           </SelectContent>
         </Select>
 
-        <Select value={status} onValueChange={(value) => setStatus(value ?? '')}>
-          <SelectTrigger className="w-[160px]"><SelectValue placeholder="Status" /></SelectTrigger>
+        <Select value={status} onValueChange={(value) => setStatus(value ?? 'ALL')}>
+          <SelectTrigger className="w-[170px] h-9"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="ALL">All Statuses</SelectItem>
-            {REQUEST_STATUSES.map(s => <SelectItem key={s} value={s}>{s.replace('_', ' ')}</SelectItem>)}
+            {REQUEST_STATUSES.map(s => <SelectItem key={s} value={s}>{s.replace(/_/g, ' ')}</SelectItem>)}
           </SelectContent>
         </Select>
 
-        <Select value={bloodGroup} onValueChange={(value) => setBloodGroup(value ?? '')}>
-          <SelectTrigger className="w-[120px]"><SelectValue placeholder="Blood Group" /></SelectTrigger>
+        <Select value={bloodGroup} onValueChange={(value) => setBloodGroup(value ?? 'ALL')}>
+          <SelectTrigger className="w-[120px] h-9"><SelectValue placeholder="Blood Group" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="ALL">All Groups</SelectItem>
             {BLOOD_GROUPS.map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}
           </SelectContent>
         </Select>
 
-        <Select value={component} onValueChange={(value) => setComponent(value ?? '')}>
-          <SelectTrigger className="w-[180px]"><SelectValue placeholder="Component" /></SelectTrigger>
+        <Select value={component} onValueChange={(value) => setComponent(value ?? 'ALL')}>
+          <SelectTrigger className="w-[180px] h-9"><SelectValue placeholder="Component" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="ALL">All Components</SelectItem>
             {COMPONENT_TYPES.map(c => <SelectItem key={c} value={c}>{COMPONENT_LABELS[c]}</SelectItem>)}
@@ -157,46 +194,46 @@ export default function EmergenciesListPage() {
             {loading ? (
               Array.from({ length: 5 }).map((_, i) => (
                 <TableRow key={i}>
-                  <TableCell colSpan={8} className="h-16 text-center">
-                    <div className="animate-pulse bg-slate-200 h-4 w-full rounded"></div>
+                  <TableCell colSpan={8} className="h-14">
+                    <div className="animate-pulse bg-muted h-4 w-full rounded" />
                   </TableCell>
                 </TableRow>
               ))
             ) : requests.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="h-32 text-center text-slate-500">
-                  No emergency requests found matching the criteria.
+                <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
+                  {error ? 'Could not load requests.' : 'No emergency requests found matching the current filters.'}
                 </TableCell>
               </TableRow>
             ) : (
               requests.map(req => (
-                <TableRow key={req._id} className="transition-colors hover:bg-muted/30">
+                <TableRow key={req._id} className="transition-colors hover:bg-muted/20">
                   <TableCell className="text-center">
                     <div className="flex justify-center">
                       <div className={`w-3 h-3 rounded-full ${getPriorityColor(req.severity)}`} title={req.severity} />
                     </div>
                   </TableCell>
-                  <TableCell className="font-medium font-mono text-sm">{req.requestId || req._id.substring(0,8)}</TableCell>
-                  <TableCell>
-                    <div className="font-semibold">{req.quantity}x {req.bloodGroup}</div>
-                    <div className="text-xs text-slate-500">{COMPONENT_LABELS[req.component]}</div>
+                  <TableCell className="font-medium font-mono text-sm">
+                    {req.requestId || req._id.substring(0, 8)}
                   </TableCell>
                   <TableCell>
-                    <div className="truncate max-w-[200px]">{req.hospital?.name || 'Unknown Hospital'}</div>
-                    <div className="text-xs text-slate-500">{req.city}</div>
+                    <div className="font-semibold">{req.quantity}× {req.bloodGroup}</div>
+                    <div className="text-xs text-muted-foreground">{COMPONENT_LABELS[req.component]}</div>
                   </TableCell>
                   <TableCell>
-                    {getStatusBadge(req.status)}
+                    <div className="truncate max-w-[200px]">{(req.hospital as any)?.name || 'Hospital'}</div>
+                    <div className="text-xs text-muted-foreground">{req.city}</div>
                   </TableCell>
-                  <TableCell className="text-sm text-slate-600">
+                  <TableCell>{getStatusBadge(req.status)}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
                     {elapsedTime(req.createdAt)}
                   </TableCell>
-                  <TableCell className="text-center font-medium">
+                  <TableCell className="text-center font-medium tabular-nums">
                     {req.matchCount}
                   </TableCell>
                   <TableCell className="text-right">
                     <Link href={`/emergencies/${req._id}`}>
-                      <Button variant="ghost" size="sm" className="h-8 px-2 text-slate-600 hover:text-blue-600">
+                      <Button variant="ghost" size="sm" className="h-8 px-2 text-muted-foreground hover:text-primary">
                         <Eye className="w-4 h-4 mr-1" /> View
                       </Button>
                     </Link>
@@ -208,9 +245,8 @@ export default function EmergenciesListPage() {
         </Table>
       </div>
       
-      {/* Pagination (Simple for now) */}
-      <div className="mt-4 flex justify-between items-center text-sm text-slate-500">
-        <div>Showing {requests.length} results</div>
+      <div className="mt-4 flex justify-between items-center text-sm text-muted-foreground">
+        <div>Showing {requests.length} result{requests.length !== 1 ? 's' : ''}</div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" disabled>Previous</Button>
           <Button variant="outline" size="sm" disabled>Next</Button>

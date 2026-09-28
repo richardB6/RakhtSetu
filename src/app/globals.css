@@ -55,52 +55,74 @@
   --color-success-foreground: var(--success-foreground);
 }
 
-/* RakthSetu dark emergency-operations system */
+/* ─── RakthSetu Light-Mode Healthcare Design System ─────────────────────────
+ *
+ * Clean white backgrounds, warm-neutral surfaces, restrained medical-red
+ * primary accent (#c0392b / oklch(0.52 0.18 28)), readable dark text,
+ * and accessible status colors meeting WCAG AA contrast.
+ *
+ * ──────────────────────────────────────────────────────────────────────────── */
 :root {
-  --background: oklch(0.11 0.018 240);
-  --foreground: oklch(0.95 0 0);
-  --card: oklch(0.155 0.018 240);
-  --card-foreground: oklch(0.95 0 0);
-  --popover: oklch(0.18 0.02 240);
-  --popover-foreground: oklch(0.95 0 0);
-  --primary: oklch(0.72 0.13 190);
-  --primary-foreground: oklch(0.12 0.02 220);
-  --secondary: oklch(0.21 0.025 240);
-  --secondary-foreground: oklch(0.90 0 0);
-  --muted: oklch(0.19 0.02 240);
-  --muted-foreground: oklch(0.68 0.015 230);
-  --accent: oklch(0.22 0.03 215);
-  --accent-foreground: oklch(0.95 0 0);
-  --destructive: oklch(0.63 0.20 25);
-  --border: oklch(0.27 0.025 235);
-  --input: oklch(0.20 0.025 235);
-  --ring: oklch(0.72 0.13 190);
+  /* Background & surfaces */
+  --background:          oklch(0.99 0.003 240);   /* Near-white with faint cool tint */
+  --foreground:          oklch(0.18 0.01 240);    /* Deep charcoal — readable */
+
+  /* Cards & popovers */
+  --card:                oklch(1 0 0);            /* Pure white cards */
+  --card-foreground:     oklch(0.18 0.01 240);
+  --popover:             oklch(1 0 0);
+  --popover-foreground:  oklch(0.18 0.01 240);
+
+  /* Primary — medical red (restrained, professional) */
+  --primary:             oklch(0.52 0.18 28);     /* #c0392b-ish deep red */
+  --primary-foreground:  oklch(0.99 0 0);
+
+  /* Secondary — warm neutral */
+  --secondary:           oklch(0.96 0.005 240);
+  --secondary-foreground:oklch(0.18 0.01 240);
+
+  /* Muted — light grey */
+  --muted:               oklch(0.96 0.005 240);
+  --muted-foreground:    oklch(0.52 0.01 240);
+
+  /* Accent — soft blue-grey hover state */
+  --accent:              oklch(0.94 0.01 240);
+  --accent-foreground:   oklch(0.25 0.01 240);
+
+  /* Destructive — slightly lighter red for non-primary destructive actions */
+  --destructive:         oklch(0.58 0.20 28);
+
+  /* Borders & inputs */
+  --border:              oklch(0.88 0.006 240);
+  --input:               oklch(0.93 0.005 240);
+  --ring:                oklch(0.52 0.18 28);     /* Focus ring matches primary */
+
   --radius: 0.375rem;
 
-  /* Emergency indicators */
-  --emergency: oklch(0.60 0.22 25);
-  --emergency-foreground: oklch(1 0 0);
-  --warning: oklch(0.75 0.15 75);
-  --warning-foreground: oklch(0.15 0 0);
-  --success: oklch(0.70 0.17 145);
-  --success-foreground: oklch(1 0 0);
+  /* Emergency status colors */
+  --emergency:           oklch(0.52 0.20 28);     /* Critical red */
+  --emergency-foreground:oklch(0.99 0 0);
+  --warning:             oklch(0.72 0.15 65);     /* Amber */
+  --warning-foreground:  oklch(0.18 0.01 0);
+  --success:             oklch(0.60 0.16 148);    /* Healthcare green */
+  --success-foreground:  oklch(0.99 0 0);
 
-  /* Chart colors */
-  --chart-1: oklch(0.65 0.2 15);
-  --chart-2: oklch(0.70 0.15 250);
-  --chart-3: oklch(0.70 0.17 145);
-  --chart-4: oklch(0.75 0.15 75);
-  --chart-5: oklch(0.60 0.15 300);
+  /* Chart colors — harmonious healthcare palette */
+  --chart-1:             oklch(0.52 0.18 28);     /* Red */
+  --chart-2:             oklch(0.55 0.14 240);    /* Blue */
+  --chart-3:             oklch(0.60 0.16 148);    /* Green */
+  --chart-4:             oklch(0.72 0.15 65);     /* Amber */
+  --chart-5:             oklch(0.55 0.14 300);    /* Purple */
 
-  /* Sidebar */
-  --sidebar: oklch(0.085 0.02 240);
-  --sidebar-foreground: oklch(0.85 0 0);
-  --sidebar-primary: oklch(0.72 0.13 190);
-  --sidebar-primary-foreground: oklch(0.12 0.02 220);
-  --sidebar-accent: oklch(0.17 0.025 235);
-  --sidebar-accent-foreground: oklch(0.95 0 0);
-  --sidebar-border: oklch(0.22 0.025 235);
-  --sidebar-ring: oklch(0.72 0.13 190);
+  /* Sidebar — white with subtle left border */
+  --sidebar:             oklch(0.995 0.002 240);
+  --sidebar-foreground:  oklch(0.25 0.01 240);
+  --sidebar-primary:     oklch(0.52 0.18 28);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent:      oklch(0.95 0.007 28);    /* Faint red tint on hover */
+  --sidebar-accent-foreground: oklch(0.52 0.18 28);
+  --sidebar-border:      oklch(0.88 0.006 240);
+  --sidebar-ring:        oklch(0.52 0.18 28);
 }
 
 @layer base {
@@ -109,8 +131,6 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
-    background-image: radial-gradient(circle at 15% -10%, oklch(0.28 0.05 210 / 0.22), transparent 34rem), linear-gradient(135deg, oklch(0.12 0.02 245), oklch(0.09 0.018 230));
-    background-attachment: fixed;
   }
   html {
     @apply font-sans scroll-smooth;
@@ -120,17 +140,17 @@
 /* Emergency pulse animation */
 @keyframes emergency-pulse {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  50% { opacity: 0.55; }
 }
 
 .animate-emergency-pulse {
   animation: emergency-pulse 2s ease-in-out infinite;
 }
 
-/* Subtle glow for critical items */
+/* Critical glow for emergency indicators */
 @keyframes critical-glow {
-  0%, 100% { box-shadow: 0 0 4px 0 oklch(0.60 0.22 25 / 0.3); }
-  50% { box-shadow: 0 0 12px 2px oklch(0.60 0.22 25 / 0.5); }
+  0%, 100% { box-shadow: 0 0 4px 0 oklch(0.52 0.20 28 / 0.25); }
+  50% { box-shadow: 0 0 10px 2px oklch(0.52 0.20 28 / 0.40); }
 }
 
 .animate-critical-glow {
@@ -147,35 +167,48 @@
   animation: dot-pulse 2s ease-in-out infinite;
 }
 
-/* Custom scrollbar for dark theme */
+/* Custom scrollbar — light healthcare style */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: oklch(0.13 0.01 250);
+  background: oklch(0.95 0.004 240);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: oklch(0.30 0.01 250);
+  background: oklch(0.78 0.008 240);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: oklch(0.40 0.01 250);
+  background: oklch(0.65 0.01 240);
 }
 
-/* Leaflet map container in dark theme */
+/* Leaflet map container — light style */
 .leaflet-container {
-  background: oklch(0.17 0.02 240) !important;
+  background: oklch(0.96 0.005 240) !important;
   border-radius: var(--radius);
 }
 
 @layer utilities {
-  .ops-panel { @apply border border-border/80 bg-card/80 shadow-[0_12px_32px_oklch(0.03_0.02_240_/_0.28)]; }
-  .ops-kicker { @apply text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground; }
-  .focus-control { @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70 focus-visible:ring-offset-2 focus-visible:ring-offset-background; }
+  .ops-panel {
+    @apply border border-border bg-card shadow-sm;
+  }
+  .ops-kicker {
+    @apply text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground;
+  }
+  .focus-control {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+  }
+  /* Status badges with accessible text labels */
+  .status-available  { @apply text-emerald-700 bg-emerald-50 border-emerald-200; }
+  .status-unavailable{ @apply text-slate-600  bg-slate-100  border-slate-200;  }
+  .status-critical   { @apply text-red-700    bg-red-50     border-red-200;    }
+  .status-high       { @apply text-orange-700 bg-orange-50  border-orange-200; }
+  .status-normal     { @apply text-blue-700   bg-blue-50    border-blue-200;   }
+  .status-pending    { @apply text-amber-700  bg-amber-50   border-amber-200;  }
 }
 
 @media (max-width: 767px) {

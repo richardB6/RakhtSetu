@@ -24,9 +24,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!user.isActive || user.verificationStatus !== 'VERIFIED') {
+    if (!user.isActive) {
       return NextResponse.json(
-        { success: false, message: 'This account is not verified for operational access.' },
+        { success: false, message: 'This account has been deactivated. Please contact support.' },
         { status: 403 }
       );
     }
