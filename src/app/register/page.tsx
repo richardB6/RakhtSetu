@@ -4,8 +4,9 @@ import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Droplets, Loader2, Eye, EyeOff } from 'lucide-react';
+import { Droplets, Loader2, Eye, EyeOff, MapPin } from 'lucide-react';
 import { UserRole } from '@/types';
+import { getCityCoordinates, getBrowserLocation } from '@/lib/utils/geocode';
 
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
@@ -25,6 +26,7 @@ export default function RegisterPage() {
     dateOfBirth: '',
     gender: '',
     availabilityStatus: 'AVAILABLE',
+    lastDonationDate: '',
     // Address (all roles)
     address: '',
     city: '',
@@ -39,6 +41,8 @@ export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [geoStatus, setGeoStatus] = useState<'idle' | 'detecting' | 'detected' | 'fallback'>('idle');
+  const [detectedCoords, setDetectedCoords] = useState<{ lat: number; lng: number } | null>(null);
 
   const update = (key: string, value: string) =>
     setFormData((prev) => ({ ...prev, [key]: value }));
@@ -58,13 +62,32 @@ export default function RegisterPage() {
 
     setLoading(true);
 
+    // Determine location from browser geo or city/state fallback — never hardcode Mumbai
+    let coords: { lat: number; lng: number };
+    try {
+      setGeoStatus('detecting');
+      const browserCoords = await getBrowserLocation();
+      if (browserCoords) {
+        coords = browserCoords;
+        setDetectedCoords(browserCoords);
+        setGeoStatus('detected');
+      } else {
+        const cityCoords = getCityCoordinates(formData.city, formData.state);
+        coords = cityCoords;
+        setGeoStatus('fallback');
+      }
+    } catch {
+      const cityCoords = getCityCoordinates(formData.city, formData.state);
+      coords = cityCoords;
+      setGeoStatus('fallback');
+    }
+
     const baseProfile = {
       address: formData.address,
       city: formData.city,
       state: formData.state,
       pincode: formData.pincode,
-      // Default to Mumbai coordinates; real geo-location can be added later
-      location: { type: 'Point', coordinates: [72.8777, 19.076] },
+      location: { type: 'Point', coordinates: [coords.lng, coords.lat] },
     };
 
     let profile: Record<string, unknown>;
@@ -74,6 +97,7 @@ export default function RegisterPage() {
         bloodGroup: formData.bloodGroup,
         ...(formData.dateOfBirth ? { dateOfBirth: formData.dateOfBirth } : {}),
         ...(formData.gender ? { gender: formData.gender } : {}),
+        ...(formData.lastDonationDate ? { lastDonationDate: formData.lastDonationDate } : {}),
         availabilityStatus: formData.availabilityStatus || 'AVAILABLE',
         emergencyNotificationsEnabled: true,
       };
@@ -262,6 +286,17 @@ export default function RegisterPage() {
                     <option value="UNAVAILABLE">Not available</option>
                   </select>
                 </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-foreground">Last Donation Date <span className="text-muted-foreground">(optional)</span></label>
+                  <input
+                    type="date"
+                    className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    value={formData.lastDonationDate || ''}
+                    onChange={(e) => update('lastDonationDate', e.target.value)}
+                    max={new Date().toISOString().split('T')[0]}
+                  />
+                  <p className="text-[11px] text-muted-foreground">Donors must wait at least 56 days between donations. Leave blank if never donated.</p>
+                </div>
               </div>
             ) : (
               <div className="space-y-3 rounded-md border border-border/60 bg-muted/20 p-3">
@@ -306,6 +341,15 @@ export default function RegisterPage() {
 
             {/* Address */}
             <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2 flex items-center gap-2 text-[11px] text-muted-foreground bg-muted/30 rounded px-2 py-1.5">
+                <MapPin className="w-3 h-3 shrink-0" />
+                {geoStatus === 'detected'
+                  ? <span className="text-emerald-600">📍 Precise location detected via GPS</span>
+                  : geoStatus === 'fallback'
+                  ? <span className="text-amber-600">📍 Location will be estimated from city/state</span>
+                  : <span>Your location will be detected from city/state (or browser GPS if permitted)</span>
+                }
+              </div>
               <div className="col-span-2 space-y-1">
                 <label className="text-xs font-medium text-foreground">Address *</label>
                 <input

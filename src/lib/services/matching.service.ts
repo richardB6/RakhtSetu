@@ -458,9 +458,11 @@ export async function respondToMatch(matchId: string, userId: string, accept: bo
     });
     
   } else {
+    // DECLINE path — mark current match as declined
     match.status = 'DECLINED';
     match.respondedAt = new Date();
     match.declineReason = declineReason;
+    await match.save();
 
     await AuditLogModel.create({
       userId,
@@ -472,8 +474,94 @@ export async function respondToMatch(matchId: string, userId: string, accept: bo
       description: `User declined match ${match._id} for emergency request ${request.requestId}. Reason: ${declineReason || 'None'}`,
       createdAt: new Date(),
     });
+
+    // Escalation: find the next eligible resource, skipping already-declined/cancelled ones
+    await escalateAfterDecline(match, request, userId);
   }
 
   await match.save();
   return match;
+}
+
+/**
+ * After a decline, find the next highest-ranked un-notified match for the same emergency request.
+ * If a next match exists, notify it. If none remain, set request to ESCALATED and notify hospital.
+ */
+async function escalateAfterDecline(
+  declinedMatch: InstanceType<typeof Match>,
+  request: InstanceType<typeof EmergencyRequest>,
+  systemUserId: string
+) {
+  // Find the next PENDING match (not yet notified) for this request, ranked higher than current
+  const nextMatch = await Match.findOne({
+    emergencyRequestId: request._id,
+    status: 'PENDING',
+    _id: { $ne: declinedMatch._id },
+  }).sort({ rank: 1, _id: 1 });
+
+  const AuditLogModel = getAuditLogModel();
+
+  if (nextMatch) {
+    // Promote the next match
+    nextMatch.status = 'NOTIFIED';
+    nextMatch.notifiedAt = new Date();
+    await nextMatch.save();
+
+    // Notify the next resource
+    await createNotification({
+      userId: nextMatch.resourceUserId.toString(),
+      type: 'NEW_MATCH',
+      title: 'Emergency Blood Request — Action Required',
+      message: `An emergency request for ${request.quantity} units of ${request.bloodGroup} ${request.component} requires your response. Previous resource declined. Please respond urgently. Match ID: ${nextMatch._id}`,
+      severity: request.severity,
+      referenceType: 'MATCH',
+      referenceId: nextMatch._id.toString(),
+    });
+
+    await AuditLogModel.create({
+      userId: systemUserId,
+      userRole: 'SYSTEM',
+      userName: 'Escalation Engine',
+      action: 'ESCALATE_TO_NEXT_RESOURCE',
+      entityType: 'MATCH',
+      entityId: nextMatch._id,
+      description: `Escalated emergency ${request.requestId} to next resource after decline. New match: ${nextMatch._id}`,
+      createdAt: new Date(),
+    });
+  } else {
+    // No more pending matches — check if there are any accepted matches already
+    const acceptedMatch = await Match.exists({
+      emergencyRequestId: request._id,
+      status: { $in: ['ACCEPTED', 'RESERVED'] },
+    });
+
+    if (!acceptedMatch) {
+      // No accepted matches and no pending ones — mark as escalated
+      request.status = 'ESCALATED';
+      request.escalationLevel = (request.escalationLevel || 0) + 1;
+      await request.save();
+
+      // Notify the hospital that no resources are available
+      await createNotification({
+        userId: request.createdBy.toString(),
+        type: 'ESCALATION',
+        title: 'No Blood Resources Available — Action Required',
+        message: `All matched resources for emergency request ${request.requestId} (${request.bloodGroup}, ${request.quantity} units) have declined. Please expand search radius or contact blood banks directly.`,
+        severity: 'CRITICAL',
+        referenceType: 'EMERGENCY_REQUEST',
+        referenceId: request._id.toString(),
+      });
+
+      await AuditLogModel.create({
+        userId: systemUserId,
+        userRole: 'SYSTEM',
+        userName: 'Escalation Engine',
+        action: 'NO_RESOURCES_AVAILABLE',
+        entityType: 'EMERGENCY_REQUEST',
+        entityId: request._id,
+        description: `All resources declined for emergency ${request.requestId}. Request escalated to level ${request.escalationLevel}.`,
+        createdAt: new Date(),
+      });
+    }
+  }
 }

@@ -39,8 +39,106 @@ interface ActiveReservation {
   units: number;
 }
 
+function HospitalInventoryView() {
+  const [emergencies, setEmergencies] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchEmergencies = async () => {
+      try {
+        const res = await fetch('/api/emergencies');
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'Failed to fetch emergencies');
+
+        const activeStatuses = ['CREATED', 'MATCHING', 'RESOURCES_NOTIFIED', 'RESPONSES_RECEIVED', 'ESCALATED'];
+        const filtered = (data.data || []).filter((e: any) =>
+          activeStatuses.includes(e.status)
+        );
+        setEmergencies(filtered);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Error fetching emergencies');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchEmergencies();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-8 w-48" />
+        </div>
+        <Skeleton className="h-64" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-xl font-bold flex items-center gap-2">
+          <Package className="w-5 h-5 text-primary" />
+          Blood Supply Tracker
+        </h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Track blood supply status for your emergency requests
+        </p>
+      </div>
+
+      {error && <Card className="border-destructive/30 p-4 text-sm text-destructive">{error}</Card>}
+
+      <Card className="overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-left">
+            <thead className="bg-muted/50 text-muted-foreground">
+              <tr>
+                <th className="px-4 py-3 font-medium">Blood Group</th>
+                <th className="px-4 py-3 font-medium">Component</th>
+                <th className="px-4 py-3 font-medium">Units Requested</th>
+                <th className="px-4 py-3 font-medium">Matches Found</th>
+                <th className="px-4 py-3 font-medium">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {emergencies.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                    No active blood supply tracking found.
+                  </td>
+                </tr>
+              ) : (
+                emergencies.map((em) => (
+                  <tr key={em._id} className="bg-card hover:bg-muted/30 transition-colors">
+                    <td className="px-4 py-3 font-medium">{em.bloodGroup}</td>
+                    <td className="px-4 py-3">{COMPONENT_LABELS[em.component as ComponentType] || em.component}</td>
+                    <td className="px-4 py-3">{em.quantity}</td>
+                    <td className="px-4 py-3">{em.matchCount || 0}</td>
+                    <td className="px-4 py-3">
+                      <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                        {em.status.replace(/_/g, ' ')}
+                      </Badge>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 export default function InventoryPage() {
   const { user } = useAuth();
+
+  if (user?.role === 'HOSPITAL') {
+    return <HospitalInventoryView />;
+  }
+
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [profileMissing, setProfileMissing] = useState(false);

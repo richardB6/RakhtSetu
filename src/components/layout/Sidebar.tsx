@@ -52,6 +52,12 @@ const navItems: NavItem[] = [
     roles: ['ADMIN', 'HOSPITAL', 'BLOOD_BANK'],
   },
   {
+    label: 'Respond to Requests',
+    href: '/requests',
+    icon: Bell,
+    roles: ['BLOOD_BANK'],
+  },
+  {
     label: 'Create Emergency',
     href: '/emergencies/new',
     icon: Plus,
@@ -67,7 +73,7 @@ const navItems: NavItem[] = [
     label: 'Inventory',
     href: '/inventory',
     icon: Package,
-    roles: ['BLOOD_BANK', 'ADMIN'],
+    roles: ['BLOOD_BANK', 'ADMIN', 'HOSPITAL'],
   },
   {
     label: 'Donor Network',

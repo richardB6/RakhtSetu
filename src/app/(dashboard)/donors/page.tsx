@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Heart, MapPin, Phone, Droplets, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Heart, MapPin, Droplets, Calendar, RefreshCw } from 'lucide-react';
 import { BLOOD_GROUPS } from '@/lib/engine/compatibility';
 import type { BloodGroup } from '@/types';
 
@@ -22,25 +22,69 @@ interface DonorEntry {
   totalDonations: number;
   gender?: string;
   emergencyNotificationsEnabled: boolean;
+  distanceKm?: number;
 }
 
 export default function DonorsPage() {
   const [donors, setDonors] = useState<DonorEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [filterBloodGroup, setFilterBloodGroup] = useState<string>('all');
   const [filterAvailability, setFilterAvailability] = useState<string>('all');
 
   const fetchDonors = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
-      const params = new URLSearchParams();
-      if (filterBloodGroup !== 'all') params.set('bloodGroup', filterBloodGroup);
-      if (filterAvailability !== 'all') params.set('isAvailable', filterAvailability);
-      const res = await fetch(`/api/resources/nearby?lat=19.076&lng=72.8777&radiusKm=100`);
-      if (res.ok) {
+      let donorList: DonorEntry[] = [];
+
+      if (filterBloodGroup !== 'all') {
+        // Search for a specific blood group
+        const params = new URLSearchParams({ q: filterBloodGroup, type: 'donors', limit: '50' });
+        const res = await fetch(`/api/search?${params}`);
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.message || 'Failed to fetch donors');
+        }
         const data = await res.json();
-        setDonors(data.data?.donors || []);
+        donorList = data.results?.donors || [];
+      } else {
+        // Fetch all blood groups — search API needs 2+ char query, use group prefixes
+        // Blood groups: A+, A-, B+, B-, AB+, AB-, O+, O-
+        // Use a query that matches multiple groups
+        const queries = ['A+', 'A-', 'B+', 'B-', 'AB', 'O+', 'O-'];
+        const seenIds = new Set<string>();
+        await Promise.all(
+          queries.map(async (q) => {
+            try {
+              const params = new URLSearchParams({ q, type: 'donors', limit: '20' });
+              const res = await fetch(`/api/search?${params}`);
+              if (res.ok) {
+                const data = await res.json();
+                for (const d of (data.results?.donors || []) as DonorEntry[]) {
+                  if (!seenIds.has(d._id)) {
+                    seenIds.add(d._id);
+                    donorList.push(d);
+                  }
+                }
+              }
+            } catch {
+              // ignore individual query failures
+            }
+          })
+        );
       }
+
+      // Filter by availability client-side
+      if (filterAvailability === 'available') {
+        donorList = donorList.filter((d) => d.isAvailable);
+      } else if (filterAvailability === 'unavailable') {
+        donorList = donorList.filter((d) => !d.isAvailable);
+      }
+
+      setDonors(donorList);
     } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch donors');
       console.error('Failed to fetch donors:', err);
     } finally {
       setLoading(false);
@@ -51,14 +95,8 @@ export default function DonorsPage() {
     fetchDonors();
   }, [fetchDonors]);
 
-  const filtered = donors.filter((d) => {
-    if (filterBloodGroup !== 'all' && d.bloodGroup !== filterBloodGroup) return false;
-    if (filterAvailability === 'available' && !d.isAvailable) return false;
-    if (filterAvailability === 'unavailable' && d.isAvailable) return false;
-    return true;
-  });
-
-  const availableCount = donors.filter((d) => d.isAvailable).length;
+  // Additional client-side filtering (supplements server-side filtering)
+  const filtered = donors;
 
   return (
     <div className="space-y-6">
@@ -69,10 +107,13 @@ export default function DonorsPage() {
             Donor Network
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {donors.length} registered donors · {availableCount} currently available
+            {donors.length} donors found · {donors.filter((d) => d.isAvailable).length} currently available
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <Button variant="outline" size="sm" onClick={fetchDonors} disabled={loading}>
+            <RefreshCw className={`w-4 h-4 mr-1 ${loading ? 'animate-spin' : ''}`} /> Refresh
+          </Button>
           <Select value={filterBloodGroup} onValueChange={(value) => setFilterBloodGroup(value ?? '')}>
             <SelectTrigger className="w-32 h-9 text-sm">
               <SelectValue placeholder="Blood group" />
@@ -96,6 +137,12 @@ export default function DonorsPage() {
           </Select>
         </div>
       </div>
+
+      {error && (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+          {error}
+        </div>
+      )}
 
       {/* Blood Group Summary */}
       <div className="grid grid-cols-4 md:grid-cols-8 gap-2">

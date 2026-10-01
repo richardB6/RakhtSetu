@@ -74,15 +74,19 @@ export default function EmergencyDetailPage() {
   };
 
   useEffect(() => {
-    fetchEmergency();
-    fetchMatches();
-    fetchTimeline();
-    setLoading(false);
+    const loadAll = async () => {
+      try {
+        await Promise.all([fetchEmergency(), fetchMatches(), fetchTimeline()]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    void loadAll();
 
     const interval = setInterval(() => {
-      fetchEmergency();
-      fetchMatches();
-      fetchTimeline();
+      void fetchEmergency();
+      void fetchMatches();
+      void fetchTimeline();
     }, 5000);
 
     return () => clearInterval(interval);
@@ -106,8 +110,16 @@ export default function EmergencyDetailPage() {
 
   const handleMatchAction = async (matchId: string, action: 'accept' | 'decline') => {
     try {
-      await fetch(`/api/matches/${matchId}/${action}`, { method: 'POST' });
-      fetchMatches();
+      const res = await fetch(`/api/matches/${matchId}/respond`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accept: action === 'accept' }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        console.error(`Failed to ${action} match:`, data.message);
+      }
+      await fetchMatches();
     } catch (error) {
       console.error(`Failed to ${action} match:`, error);
     }

@@ -110,6 +110,38 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, message: 'Invalid blood bank profile.', errors: formatZodErrors(parsedProfile.error) }, { status: 422 });
       }
       profileDocument = await BloodBank.create({ ...parsedProfile.data, userId: user._id });
+
+      // Auto-initialize empty inventory slots for all blood group × component combinations.
+      // This is idempotent ($setOnInsert won't overwrite existing records).
+      // Blood bank operators can then update quantities via the Inventory page.
+      try {
+        const { Inventory } = await import('@/models/Inventory');
+        const BLOOD_GROUPS_LIST = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'] as const;
+        const COMPONENT_TYPES_LIST = ['WHOLE_BLOOD', 'PRBC', 'PLATELETS_RDP', 'PLATELETS_SDP', 'FFP', 'CRYO'] as const;
+        const now = new Date();
+        const ops = [];
+        for (const bg of BLOOD_GROUPS_LIST) {
+          for (const ct of COMPONENT_TYPES_LIST) {
+            ops.push({
+              updateOne: {
+                filter: { bloodBankId: profileDocument._id, bloodGroup: bg, component: ct },
+                update: {
+                  $setOnInsert: {
+                    bloodBankId: profileDocument._id, bloodGroup: bg, component: ct,
+                    availableUnits: 0, reservedUnits: 0, totalUnits: 0,
+                    status: 'UNAVAILABLE' as const, operationallyUnavailable: false, lastUpdated: now,
+                  },
+                },
+                upsert: true,
+              },
+            });
+          }
+        }
+        await Inventory.bulkWrite(ops);
+      } catch (invErr) {
+        // Inventory init is best-effort — don't fail registration if it errors
+        console.error('[register] Failed to auto-init inventory:', invErr);
+      }
     } else {
       const parsedProfile = donorProfileSchema.safeParse(profile);
       if (!parsedProfile.success) {

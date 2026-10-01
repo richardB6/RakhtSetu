@@ -99,11 +99,11 @@ export default function LiveMatchingPage() {
           
           <div className="relative z-10 flex flex-col items-center">
             <div className="mb-10 text-center">
-              <h1 className="text-2xl md:text-3xl font-bold tracking-tight mb-2 text-zinc-100 flex items-center justify-center gap-3">
+              <h1 className="text-2xl md:text-3xl font-bold tracking-tight mb-2 text-foreground flex items-center justify-center gap-3">
                 <Activity className="w-8 h-8 text-blue-500 animate-pulse" />
                 Matching Engine Running
               </h1>
-              <p className="text-zinc-400 font-mono text-sm">Processing Request ID: {id}</p>
+              <p className="text-muted-foreground font-mono text-sm">Processing Request ID: {id}</p>
             </div>
 
             <div className="w-full max-w-md space-y-4">
@@ -125,20 +125,20 @@ export default function LiveMatchingPage() {
                     className={`flex items-center gap-4 p-4 rounded-xl border ${
                       isActive ? 'bg-blue-500/10 border-blue-500/30' : 
                       isDone ? 'bg-emerald-500/5 border-emerald-500/20' : 
-                      'bg-zinc-900/50 border-zinc-800/50'
+                      'bg-muted/50 border-border/50'
                     }`}
                   >
                     <div className={`shrink-0 flex items-center justify-center w-8 h-8 rounded-full ${
                       isActive ? 'bg-blue-500 text-white animate-pulse' :
                       isDone ? 'bg-emerald-500 text-white' :
-                      'bg-zinc-800 text-zinc-500'
+                      'bg-muted text-muted-foreground'
                     }`}>
                       {isDone ? <CheckCircle2 className="w-5 h-5" /> : <Icon className="w-4 h-4" />}
                     </div>
                     <span className={`font-medium ${
-                      isActive ? 'text-blue-100' :
-                      isDone ? 'text-emerald-100' :
-                      'text-zinc-500'
+                      isActive ? 'text-blue-700' :
+                      isDone ? 'text-emerald-700' :
+                      'text-muted-foreground'
                     }`}>
                       {step.label}
                     </span>
@@ -170,8 +170,8 @@ export default function LiveMatchingPage() {
               <CheckCircle2 className="w-10 h-10 text-emerald-500" />
             </motion.div>
             <div>
-              <h1 className="text-3xl font-bold text-zinc-100">MATCHING COMPLETE</h1>
-              <p className="text-zinc-400 mt-2">Found {matches.length} compatible resources</p>
+              <h1 className="text-3xl font-bold text-foreground">MATCHING COMPLETE</h1>
+              <p className="text-muted-foreground mt-2">Found {matches.length} compatible resources</p>
             </div>
           </div>
 
@@ -187,17 +187,17 @@ export default function LiveMatchingPage() {
                   <Card className="ops-panel transition-colors hover:border-primary/50">
                     <div className="p-4 flex items-center justify-between">
                       <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center font-mono text-zinc-400 text-sm font-bold">
+                        <div className="w-10 h-10 rounded-full bg-muted border border-border flex items-center justify-center font-mono text-muted-foreground text-sm font-bold">
                           #{match.rank}
                         </div>
                         <div>
-                          <p className="font-medium text-zinc-200">
+                          <p className="font-medium text-foreground">
                             {match.resourceType === 'BLOOD_BANK' ? match.bloodBank?.name || 'Blood Bank' : match.resourceUser?.name || 'Donor'}
                           </p>
                           <div className="flex gap-2 mt-1">
-                            <Badge variant="outline" className="text-[10px] uppercase text-zinc-400 bg-zinc-900">{match.resourceType.replace('_', ' ')}</Badge>
-                            <span className="text-xs text-zinc-500">{match.distanceKm.toFixed(1)} km away</span>
-                            <Badge variant="outline" className="text-[10px] text-zinc-400">
+                            <Badge variant="outline" className="text-[10px] uppercase text-muted-foreground bg-muted">{match.resourceType.replace('_', ' ')}</Badge>
+                            <span className="text-xs text-muted-foreground">{match.distanceKm.toFixed(1)} km away</span>
+                            <Badge variant="outline" className="text-[10px] text-muted-foreground">
                               {match.isVerified ? 'VERIFIED' : 'PENDING VERIFICATION'}
                             </Badge>
                           </div>
@@ -207,18 +207,18 @@ export default function LiveMatchingPage() {
                         <div className={`text-2xl font-bold font-mono ${getScoreColor(match.score)}`}>
                           {match.score}
                         </div>
-                        <div className="text-[10px] uppercase tracking-wide text-zinc-500">operational score</div>
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">operational score</div>
                       </div>
                     </div>
-                    <div className="border-t border-zinc-800 px-4 py-3 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-zinc-400">
-                      <span>Compatibility: <strong className="text-zinc-200">{match.compatibilityType.replace('_', ' ')}</strong></span>
-                      <span>Available: <strong className="text-zinc-200">{match.availableQuantity} unit(s)</strong></span>
-                      <span>Response: <strong className="text-zinc-200">{match.status}</strong></span>
-                      <span>Urgency factor: <strong className="text-zinc-200">{match.factors.urgencyScore}/100</strong></span>
+                    <div className="border-t border-border px-4 py-3 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-muted-foreground">
+                      <span>Compatibility: <strong className="text-foreground">{match.compatibilityType.replace('_', ' ')}</strong></span>
+                      <span>Available: <strong className="text-foreground">{match.availableQuantity} unit(s)</strong></span>
+                      <span>Response: <strong className="text-foreground">{match.status}</strong></span>
+                      <span>Urgency factor: <strong className="text-foreground">{match.factors.urgencyScore}/100</strong></span>
                     </div>
                     <div className="px-4 pb-4">
-                      <p className="text-xs uppercase tracking-wide text-zinc-500 mb-1">Why this resource</p>
-                      <p className="text-sm text-zinc-300">{match.reasons.join(' • ')}</p>
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Why this resource</p>
+                      <p className="text-sm text-foreground/80">{match.reasons.join(' • ')}</p>
                     </div>
                   </Card>
                 </motion.div>
