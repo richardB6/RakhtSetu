@@ -4,131 +4,103 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Heart, MapPin, Droplets, Calendar, RefreshCw } from 'lucide-react';
+import { Heart, MapPin, Calendar, RefreshCw, Search, AlertCircle, Phone } from 'lucide-react';
 import { BLOOD_GROUPS } from '@/lib/engine/compatibility';
+import { useAuth } from '@/contexts/AuthContext';
 import type { BloodGroup } from '@/types';
 
 interface DonorEntry {
   _id: string;
-  userId?: { name: string; email: string; phone: string };
+  userId?: { name: string; email?: string; phone?: string; verificationStatus?: string };
   bloodGroup: BloodGroup;
   isAvailable: boolean;
+  availabilityStatus: string;
   availabilityRadius: number;
   city: string;
   state: string;
-  lastDonationDate?: string;
-  totalDonations: number;
-  gender?: string;
+  lastDonationDate?: string | null;
+  totalDonations?: number;
+  gender?: string | null;
   emergencyNotificationsEnabled: boolean;
-  distanceKm?: number;
 }
 
+interface GroupStats { [group: string]: { total: number; available: number } }
+
 export default function DonorsPage() {
+  const { user } = useAuth();
   const [donors, setDonors] = useState<DonorEntry[]>([]);
+  const [groupStats, setGroupStats] = useState<GroupStats>({});
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filterBloodGroup, setFilterBloodGroup] = useState<string>('all');
-  const [filterAvailability, setFilterAvailability] = useState<string>('all');
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [filterBloodGroup, setFilterBloodGroup] = useState('all');
+  const [filterAvailability, setFilterAvailability] = useState('all');
+
+  // Debounce search input to avoid a request on every keystroke
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
   const fetchDonors = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      let donorList: DonorEntry[] = [];
+      const params = new URLSearchParams({ limit: '60' });
+      if (filterBloodGroup !== 'all') params.set('bloodGroup', filterBloodGroup);
+      if (filterAvailability !== 'all') params.set('availability', filterAvailability);
+      if (debouncedSearch) params.set('search', debouncedSearch);
 
-      if (filterBloodGroup !== 'all') {
-        // Search for a specific blood group
-        const params = new URLSearchParams({ q: filterBloodGroup, type: 'donors', limit: '50' });
-        const res = await fetch(`/api/search?${params}`);
-        if (!res.ok) {
-          const data = await res.json();
-          throw new Error(data.message || 'Failed to fetch donors');
-        }
-        const data = await res.json();
-        donorList = data.results?.donors || [];
-      } else {
-        // Fetch all blood groups — search API needs 2+ char query, use group prefixes
-        // Blood groups: A+, A-, B+, B-, AB+, AB-, O+, O-
-        // Use a query that matches multiple groups
-        const queries = ['A+', 'A-', 'B+', 'B-', 'AB', 'O+', 'O-'];
-        const seenIds = new Set<string>();
-        await Promise.all(
-          queries.map(async (q) => {
-            try {
-              const params = new URLSearchParams({ q, type: 'donors', limit: '20' });
-              const res = await fetch(`/api/search?${params}`);
-              if (res.ok) {
-                const data = await res.json();
-                for (const d of (data.results?.donors || []) as DonorEntry[]) {
-                  if (!seenIds.has(d._id)) {
-                    seenIds.add(d._id);
-                    donorList.push(d);
-                  }
-                }
-              }
-            } catch {
-              // ignore individual query failures
-            }
-          })
-        );
-      }
+      const res = await fetch(`/api/donors?${params}`);
+      const payload = await res.json();
+      if (!res.ok || !payload.success) throw new Error(payload.message ?? 'Unable to load donor network');
 
-      // Filter by availability client-side
-      if (filterAvailability === 'available') {
-        donorList = donorList.filter((d) => d.isAvailable);
-      } else if (filterAvailability === 'unavailable') {
-        donorList = donorList.filter((d) => !d.isAvailable);
-      }
-
-      setDonors(donorList);
+      setDonors(payload.data ?? []);
+      setTotalCount(payload.total ?? 0);
+      if (payload.groupStats) setGroupStats(payload.groupStats);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch donors');
-      console.error('Failed to fetch donors:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load donors');
     } finally {
       setLoading(false);
     }
-  }, [filterBloodGroup, filterAvailability]);
+  }, [filterBloodGroup, filterAvailability, debouncedSearch]);
 
-  useEffect(() => {
-    fetchDonors();
-  }, [fetchDonors]);
+  useEffect(() => { void fetchDonors(); }, [fetchDonors]);
 
-  // Additional client-side filtering (supplements server-side filtering)
-  const filtered = donors;
+  const isAdmin = user?.role === 'ADMIN';
+  const isBloodBank = user?.role === 'BLOOD_BANK';
+  const availableCount = donors.filter((d) => d.isAvailable).length;
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      {/* Header */}
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-xl font-bold flex items-center gap-2">
-            <Heart className="w-5 h-5 text-primary" />
-            Donor Network
+          <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
+            <Heart className="w-5 h-5 text-primary" /> Donor Network
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {donors.length} donors found · {donors.filter((d) => d.isAvailable).length} currently available
+          <p className="mt-1 text-sm text-muted-foreground">
+            {loading ? '…' : `${totalCount} registered · ${availableCount} available in current view`}
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" onClick={fetchDonors} disabled={loading}>
-            <RefreshCw className={`w-4 h-4 mr-1 ${loading ? 'animate-spin' : ''}`} /> Refresh
+            <RefreshCw className={`mr-1 h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
           </Button>
-          <Select value={filterBloodGroup} onValueChange={(value) => setFilterBloodGroup(value ?? '')}>
-            <SelectTrigger className="w-32 h-9 text-sm">
-              <SelectValue placeholder="Blood group" />
-            </SelectTrigger>
+          <Select value={filterBloodGroup} onValueChange={(v) => setFilterBloodGroup(v ?? 'all')}>
+            <SelectTrigger className="h-9 w-32 text-sm"><SelectValue placeholder="Blood group" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Groups</SelectItem>
-              {BLOOD_GROUPS.map((bg) => (
-                <SelectItem key={bg} value={bg}>{bg}</SelectItem>
-              ))}
+              {BLOOD_GROUPS.map((bg) => <SelectItem key={bg} value={bg}>{bg}</SelectItem>)}
             </SelectContent>
           </Select>
-          <Select value={filterAvailability} onValueChange={(value) => setFilterAvailability(value ?? '')}>
-            <SelectTrigger className="w-36 h-9 text-sm">
-              <SelectValue placeholder="Availability" />
-            </SelectTrigger>
+          <Select value={filterAvailability} onValueChange={(v) => setFilterAvailability(v ?? 'all')}>
+            <SelectTrigger className="h-9 w-36 text-sm"><SelectValue placeholder="Availability" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
               <SelectItem value="available">Available</SelectItem>
@@ -138,79 +110,128 @@ export default function DonorsPage() {
         </div>
       </div>
 
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search by city, state, or donor name…"
+          className="h-10 pl-9"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
+
+      {/* Error */}
       {error && (
-        <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-          {error}
+        <div className="flex items-start gap-3 rounded-md border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span className="flex-1">{error}</span>
+          <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={fetchDonors}>Retry</Button>
         </div>
       )}
 
-      {/* Blood Group Summary */}
-      <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
+      {/* Blood group quick-filter grid */}
+      <div className="grid grid-cols-4 gap-2 md:grid-cols-8">
         {BLOOD_GROUPS.map((bg) => {
-          const count = donors.filter((d) => d.bloodGroup === bg && d.isAvailable).length;
-          const total = donors.filter((d) => d.bloodGroup === bg).length;
+          const stats = groupStats[bg] ?? { available: 0, total: 0 };
+          const selected = filterBloodGroup === bg;
           return (
             <Card
               key={bg}
-              className={`p-3 text-center cursor-pointer transition-colors ${
-                filterBloodGroup === bg ? 'border-primary bg-primary/5' : 'hover:bg-muted/30'
-              }`}
-              onClick={() => setFilterBloodGroup(filterBloodGroup === bg ? 'all' : bg)}
+              onClick={() => setFilterBloodGroup(selected ? 'all' : bg)}
+              className={`cursor-pointer p-3 text-center transition-all ${selected ? 'border-primary bg-primary/10 shadow-sm' : 'hover:bg-muted/40'}`}
             >
-              <p className="text-lg font-bold">{bg}</p>
-              <p className="text-xs text-muted-foreground">
-                <span className="text-emerald-400">{count}</span>/{total}
+              <p className="text-base font-bold">{bg}</p>
+              <p className="mt-0.5 text-xs">
+                <span className="font-semibold text-emerald-500">{stats.available}</span>
+                <span className="text-muted-foreground">/{stats.total}</span>
               </p>
             </Card>
           );
         })}
       </div>
 
-      {/* Donor List */}
+      {/* Donor grid */}
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-36" />)}
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-44 rounded-lg" />)}
         </div>
-      ) : filtered.length === 0 ? (
+      ) : error && donors.length === 0 ? (
         <Card className="p-12 text-center">
-          <Heart className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-          <p className="text-sm text-muted-foreground">No donors found matching the criteria</p>
+          <AlertCircle className="mx-auto mb-3 h-10 w-10 text-destructive" />
+          <p className="font-medium text-destructive">Donor network could not be loaded</p>
+          <Button variant="outline" size="sm" className="mt-4" onClick={fetchDonors}>Retry</Button>
+        </Card>
+      ) : donors.length === 0 ? (
+        <Card className="p-12 text-center">
+          <Heart className="mx-auto mb-3 h-10 w-10 text-muted-foreground/40" />
+          <p className="font-medium">No donors found</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {filterBloodGroup !== 'all' || filterAvailability !== 'all' || debouncedSearch
+              ? 'No donors match the current filters.'
+              : 'No donors are registered yet.'}
+          </p>
+          {(filterBloodGroup !== 'all' || filterAvailability !== 'all' || search) && (
+            <Button variant="outline" size="sm" className="mt-4" onClick={() => { setFilterBloodGroup('all'); setFilterAvailability('all'); setSearch(''); }}>
+              Clear Filters
+            </Button>
+          )}
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map((donor) => (
-            <Card key={donor._id} className="p-4">
-              <div className="flex items-start justify-between mb-3">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {donors.map((donor) => (
+            <Card key={donor._id} className="p-5 transition-colors hover:border-primary/40">
+              <div className="mb-3 flex items-start justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/10">
-                    <Droplets className="w-5 h-5 text-primary" />
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 font-bold text-sm text-primary">
+                    {donor.bloodGroup}
                   </div>
                   <div>
-                    <p className="text-sm font-medium">{donor.userId?.name || 'Anonymous Donor'}</p>
-                    <p className="text-xs text-muted-foreground">{donor.city}, {donor.state}</p>
+                    <p className="text-sm font-semibold leading-tight">{isBloodBank ? 'Available donor' : donor.userId?.name ?? 'Anonymous Donor'}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{donor.city}, {donor.state}</p>
                   </div>
                 </div>
-                <Badge variant="outline" className="text-base font-bold px-2">
-                  {donor.bloodGroup}
+                <Badge
+                  className={`text-xs ${donor.isAvailable ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600' : 'border-border bg-muted text-muted-foreground'}`}
+                  variant="outline"
+                >
+                  {donor.isAvailable ? 'Available' : 'Unavailable'}
                 </Badge>
               </div>
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <MapPin className="w-3 h-3" />
-                  <span>Radius: {donor.availabilityRadius} km</span>
+
+              <div className="space-y-1.5 border-t pt-3 text-xs text-muted-foreground">
+                <div className="flex justify-between">
+                  <span className="flex items-center gap-1.5"><MapPin className="h-3 w-3" /> Radius</span>
+                  <span className="font-medium text-foreground">{donor.availabilityRadius} km</span>
                 </div>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Calendar className="w-3 h-3" />
-                  <span>Donations: {donor.totalDonations}</span>
-                </div>
-                <div className="flex items-center gap-2 text-xs">
-                  <span className={`inline-flex h-2 w-2 rounded-full ${donor.isAvailable ? 'bg-emerald-500' : 'bg-gray-500'}`} />
-                  <span className={donor.isAvailable ? 'text-emerald-400' : 'text-muted-foreground'}>
-                    {donor.isAvailable ? 'Available' : 'Unavailable'}
+                {isAdmin && <div className="flex justify-between">
+                  <span className="flex items-center gap-1.5"><Calendar className="h-3 w-3" /> Donations</span>
+                  <span className="font-medium text-foreground">{donor.totalDonations ?? 0}</span>
+                </div>}
+                {isAdmin && donor.lastDonationDate && (
+                  <div className="flex justify-between">
+                    <span>Last donation</span>
+                    <span className="font-medium text-foreground">{new Date(donor.lastDonationDate).toLocaleDateString()}</span>
+                  </div>
+                )}
+                {/* Phone shown to admin or if donor has alerts enabled */}
+                {donor.userId?.phone && (
+                  <div className="flex justify-between pt-1 border-t mt-1">
+                    <span className="flex items-center gap-1.5"><Phone className="h-3 w-3" /> Contact</span>
+                    <span className="font-mono font-medium text-foreground">{donor.userId.phone}</span>
+                  </div>
+                )}
+                {isAdmin && donor.userId?.email && (
+                  <div className="flex justify-between">
+                    <span>Email</span>
+                    <span className="font-medium text-foreground truncate max-w-[160px]">{donor.userId.email}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between pt-1">
+                  <span>Emergency alerts</span>
+                  <span className={`font-medium ${donor.emergencyNotificationsEnabled ? 'text-blue-500' : 'text-muted-foreground'}`}>
+                    {donor.emergencyNotificationsEnabled ? 'On' : 'Off'}
                   </span>
-                  {donor.emergencyNotificationsEnabled && (
-                    <Badge variant="secondary" className="text-[9px] ml-auto">Emergency Alerts ON</Badge>
-                  )}
                 </div>
               </div>
             </Card>

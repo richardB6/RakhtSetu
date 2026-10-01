@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Package, Save, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Package, Save, AlertTriangle, RefreshCw, Loader2 } from 'lucide-react';
 import { BLOOD_GROUPS, COMPONENT_TYPES, COMPONENT_LABELS } from '@/lib/engine/compatibility';
 import type { BloodGroup, ComponentType } from '@/types';
 
@@ -38,6 +38,8 @@ interface ActiveReservation {
   emergencyRequestId: { requestId: string; bloodGroup: string; component: string };
   units: number;
 }
+
+// ─── Hospital supply tracker ─────────────────────────────────────────────────
 
 function HospitalInventoryView() {
   const [emergencies, setEmergencies] = useState<any[]>([]);
@@ -84,7 +86,7 @@ function HospitalInventoryView() {
           Blood Supply Tracker
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Track blood supply status for your emergency requests
+          Track blood supply status for your active emergency requests
         </p>
       </div>
 
@@ -132,13 +134,10 @@ function HospitalInventoryView() {
   );
 }
 
-export default function InventoryPage() {
+// ─── Blood bank / admin inventory view ──────────────────────────────────────
+
+function BloodBankInventoryView() {
   const { user } = useAuth();
-
-  if (user?.role === 'HOSPITAL') {
-    return <HospitalInventoryView />;
-  }
-
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [profileMissing, setProfileMissing] = useState(false);
@@ -160,30 +159,37 @@ export default function InventoryPage() {
     setError(null);
     setProfileMissing(false);
     try {
-      const res = await fetch('/api/inventory');
+      // For ADMIN without bloodBankId, we can't fetch all inventory; show a message
+      const url = user?.role === 'ADMIN' ? '/api/inventory?bloodBankId=all' : '/api/inventory';
+      const res = await fetch(url);
       const data = await res.json();
       if (!res.ok) {
         if (data.message?.includes('profile not found')) {
           setProfileMissing(true);
+        } else if (data.message?.includes('bloodBankId is required')) {
+          // Admin needs to select a blood bank - show empty with note
+          setInventory([]);
         } else {
           setError(data.message || 'Failed to fetch inventory');
         }
         return;
       }
       setInventory(data.data || []);
-      const statusRes = await fetch('/api/blood-bank/status');
-      if (statusRes.ok) {
-        const statusData = await statusRes.json();
-        setOperationalStatus(statusData.data?.operationalStatus || 'OPEN');
+      if (user?.role === 'BLOOD_BANK') {
+        const statusRes = await fetch('/api/blood-bank/status');
+        if (statusRes.ok) {
+          const statusData = await statusRes.json();
+          setOperationalStatus(statusData.data?.operationalStatus || 'OPEN');
+        }
+        const reservationRes = await fetch('/api/inventory/reservations');
+        if (reservationRes.ok) setReservations((await reservationRes.json()).data || []);
       }
-      const reservationRes = await fetch('/api/inventory/reservations');
-      if (reservationRes.ok) setReservations((await reservationRes.json()).data || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch inventory');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.role]);
 
   const updateOperationalStatus = async (value: string) => {
     setStatusSaving(true);
@@ -288,9 +294,14 @@ export default function InventoryPage() {
         const updated = { ...editValues };
         delete updated[item._id];
         setEditValues(updated);
+        setMessage('Inventory updated successfully.');
+      } else {
+        const data = await res.json();
+        setMessage(data.message || 'Failed to update inventory');
       }
     } catch (err) {
       console.error('Failed to update inventory:', err);
+      setMessage('Failed to update inventory');
     } finally {
       setSaving(null);
     }
@@ -323,7 +334,7 @@ export default function InventoryPage() {
 
   const totalAvailable = filtered.reduce((sum, i) => sum + i.availableUnits, 0);
   const totalReserved = filtered.reduce((sum, i) => sum + i.reservedUnits, 0);
-  const lowStockCount = filtered.filter((i) => i.availableUnits <= 2).length;
+  const lowStockCount = filtered.filter((i) => i.availableUnits <= 2 && i.availableUnits >= 0).length;
 
   if (loading) {
     return (
@@ -363,7 +374,7 @@ export default function InventoryPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold flex items-center gap-2">
             <Package className="w-5 h-5 text-primary" />
@@ -373,8 +384,34 @@ export default function InventoryPage() {
             Manage blood component availability and stock levels
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          {user?.role === 'BLOOD_BANK' && <Select value={operationalStatus} onValueChange={(value) => value && updateOperationalStatus(value)} disabled={statusSaving}><SelectTrigger className="w-44 h-9 text-sm"><SelectValue placeholder="Operational status" /></SelectTrigger><SelectContent><SelectItem value="OPEN">Open</SelectItem><SelectItem value="LIMITED">Limited</SelectItem><SelectItem value="UNAVAILABLE">Unavailable</SelectItem><SelectItem value="CLOSED">Closed</SelectItem></SelectContent></Select>}
+        <div className="flex flex-wrap items-center gap-3">
+          {user?.role === 'BLOOD_BANK' && inventory.length === 0 && (
+            <Button
+              variant="default"
+              size="sm"
+              onClick={initializeInventory}
+              disabled={initializing}
+            >
+              {initializing ? (
+                <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Initializing...</>
+              ) : (
+                'Initialize Inventory Slots'
+              )}
+            </Button>
+          )}
+          {user?.role === 'BLOOD_BANK' && (
+            <Select value={operationalStatus} onValueChange={(value) => value && updateOperationalStatus(value)} disabled={statusSaving}>
+              <SelectTrigger className="w-44 h-9 text-sm">
+                <SelectValue placeholder="Operational status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="OPEN">Open</SelectItem>
+                <SelectItem value="LIMITED">Limited</SelectItem>
+                <SelectItem value="UNAVAILABLE">Unavailable</SelectItem>
+                <SelectItem value="CLOSED">Closed</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
           <Select value={filterComponent} onValueChange={(value) => setFilterComponent(value ?? '')}>
             <SelectTrigger className="w-48 h-9 text-sm">
               <SelectValue placeholder="Filter by component" />
@@ -389,13 +426,57 @@ export default function InventoryPage() {
           <Button variant="outline" size="sm" onClick={fetchInventory}>
             <RefreshCw className="w-4 h-4 mr-1" /> Refresh
           </Button>
-          <Button variant="outline" size="sm" onClick={fetchHistory}>History</Button>
+          {user?.role === 'BLOOD_BANK' && (
+            <Button variant="outline" size="sm" onClick={fetchHistory}>History</Button>
+          )}
         </div>
       </div>
+
       {error && <Card className="border-destructive/30 p-4 text-sm text-destructive">{error}</Card>}
-      {message && <p className="text-sm text-emerald-400">{message}</p>}
-      {showHistory && <Card className="p-4"><div className="mb-3 flex items-center justify-between"><h2 className="text-sm font-semibold">Inventory history</h2><Button variant="ghost" size="sm" onClick={() => setShowHistory(false)}>Close</Button></div>{history.length === 0 ? <p className="text-sm text-muted-foreground">No inventory history found.</p> : <div className="space-y-2">{history.slice(0, 20).map((entry) => <div key={entry._id} className="flex items-center justify-between border-b border-border pb-2 text-xs"><span>{entry.action.replace(/_/g, ' ')}</span><span className="text-muted-foreground">{entry.newState?.availableUnits ?? '-'} available / {entry.newState?.reservedUnits ?? '-'} reserved</span></div>)}</div>}</Card>}
-      {user?.role === 'BLOOD_BANK' && <Card className="space-y-3 p-4"><p className="text-sm font-semibold">Reservation actions</p><div className="flex gap-2"><Input placeholder="Accepted match ID" value={matchId} onChange={(event) => setMatchId(event.target.value)} /><Button onClick={reserveMatch} disabled={reservationSaving || !matchId}>Reserve</Button></div>{reservations.length === 0 ? <p className="text-xs text-muted-foreground">No active reservations.</p> : reservations.map((reservation) => <div key={reservation._id} className="flex items-center justify-between border-t border-border pt-2 text-xs"><span>{reservation.emergencyRequestId.requestId} · {reservation.units} units</span><Button size="sm" variant="outline" onClick={() => releaseReservation(reservation)}>Release</Button></div>)}</Card>}
+      {message && <p className="text-sm text-emerald-600">{message}</p>}
+
+      {showHistory && (
+        <Card className="p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold">Inventory history</h2>
+            <Button variant="ghost" size="sm" onClick={() => setShowHistory(false)}>Close</Button>
+          </div>
+          {history.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No inventory history found.</p>
+          ) : (
+            <div className="space-y-2">
+              {history.slice(0, 20).map((entry) => (
+                <div key={entry._id} className="flex items-center justify-between border-b border-border pb-2 text-xs">
+                  <span>{entry.action.replace(/_/g, ' ')}</span>
+                  <span className="text-muted-foreground">
+                    {entry.newState?.availableUnits ?? '-'} available / {entry.newState?.reservedUnits ?? '-'} reserved
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
+
+      {user?.role === 'BLOOD_BANK' && (
+        <Card className="space-y-3 p-4">
+          <p className="text-sm font-semibold">Reservation actions</p>
+          <div className="flex gap-2">
+            <Input placeholder="Accepted match ID" value={matchId} onChange={(event) => setMatchId(event.target.value)} />
+            <Button onClick={reserveMatch} disabled={reservationSaving || !matchId}>Reserve</Button>
+          </div>
+          {reservations.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No active reservations.</p>
+          ) : (
+            reservations.map((reservation) => (
+              <div key={reservation._id} className="flex items-center justify-between border-t border-border pt-2 text-xs">
+                <span>{reservation.emergencyRequestId.requestId} · {reservation.units} units</span>
+                <Button size="sm" variant="outline" onClick={() => releaseReservation(reservation)}>Release</Button>
+              </div>
+            ))
+          )}
+        </Card>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -422,72 +503,103 @@ export default function InventoryPage() {
       </div>
 
       {/* Inventory Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {BLOOD_GROUPS.map((bg) => {
-          const items = groupedByBloodGroup[bg] || [];
-          if (items.length === 0 && filterComponent !== 'all') return null;
+      {inventory.length === 0 ? (
+        <Card className="p-8 text-center">
+          <Package className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+          <p className="text-sm font-medium">No inventory records found</p>
+          {user?.role === 'BLOOD_BANK' && (
+            <p className="text-xs text-muted-foreground mt-2">
+              Click &quot;Initialize Inventory Slots&quot; to create all blood group × component slots, then set your available quantities.
+            </p>
+          )}
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {BLOOD_GROUPS.map((bg) => {
+            const items = groupedByBloodGroup[bg] || [];
+            if (items.length === 0 && filterComponent !== 'all') return null;
 
-          return (
-            <Card key={bg} className="p-4">
-              <div className="flex items-center justify-between mb-3">
-                <Badge variant="outline" className="text-base font-bold px-3 py-1">
-                  {bg}
-                </Badge>
-                {items.some((i) => i.availableUnits <= 2) && (
-                  <AlertTriangle className="w-4 h-4 text-amber-500" />
-                )}
-              </div>
-              <div className="space-y-2">
-                {items.length > 0 ? items.map((item) => (
-                  <div key={item._id} className="flex items-center gap-2 p-2 rounded-md bg-muted/30">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs text-muted-foreground truncate">
-                        {COMPONENT_LABELS[item.component] || item.component}
-                      </p>
-                      <div className="flex items-center gap-2 mt-1">
-                        {user?.role === 'BLOOD_BANK' ? (
-                          <Input
-                            type="number"
-                            min={0}
-                            value={editValues[item._id] ?? item.availableUnits}
-                            onChange={(e) =>
-                              setEditValues({ ...editValues, [item._id]: parseInt(e.target.value) || 0 })
-                            }
-                            className="h-7 w-16 text-xs"
-                          />
-                        ) : (
-                          <span className="text-sm font-bold">{item.availableUnits}</span>
-                        )}
-                        <span className="text-[10px] text-muted-foreground">avail</span>
-                        <Badge variant={item.status === 'UNAVAILABLE' ? 'destructive' : 'outline'} className="text-[10px]">{item.status}</Badge>
-                        {item.reservedUnits > 0 && (
-                          <Badge variant="secondary" className="text-[10px]">
-                            {item.reservedUnits} rsv
-                          </Badge>
-                        )}
+            return (
+              <Card key={bg} className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <Badge variant="outline" className="text-base font-bold px-3 py-1">
+                    {bg}
+                  </Badge>
+                  {items.some((i) => i.availableUnits <= 2) && (
+                    <AlertTriangle className="w-4 h-4 text-amber-500" />
+                  )}
+                </div>
+                <div className="space-y-2">
+                  {items.length > 0 ? items.map((item) => (
+                    <div key={item._id} className="flex items-center gap-2 p-2 rounded-md bg-muted/30">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-muted-foreground truncate">
+                          {COMPONENT_LABELS[item.component] || item.component}
+                        </p>
+                        <div className="flex items-center gap-2 mt-1">
+                          {user?.role === 'BLOOD_BANK' ? (
+                            <Input
+                              type="number"
+                              min={0}
+                              value={editValues[item._id] ?? item.availableUnits}
+                              onChange={(e) =>
+                                setEditValues({ ...editValues, [item._id]: parseInt(e.target.value) || 0 })
+                              }
+                              className="h-7 w-16 text-xs"
+                            />
+                          ) : (
+                            <span className="text-sm font-bold">{item.availableUnits}</span>
+                          )}
+                          <span className="text-[10px] text-muted-foreground">avail</span>
+                          <Badge variant={item.status === 'UNAVAILABLE' ? 'destructive' : 'outline'} className="text-[10px]">{item.status}</Badge>
+                          {item.reservedUnits > 0 && (
+                            <Badge variant="secondary" className="text-[10px]">
+                              {item.reservedUnits} rsv
+                            </Badge>
+                          )}
+                        </div>
                       </div>
+                      {user?.role === 'BLOOD_BANK' && editValues[item._id] !== undefined && editValues[item._id] !== item.availableUnits && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 w-7 p-0"
+                          onClick={() => handleUpdate(item)}
+                          disabled={saving === item._id}
+                        >
+                          {saving === item._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                        </Button>
+                      )}
+                      {user?.role === 'BLOOD_BANK' && (
+                        <Button size="sm" variant="ghost" className="h-7 px-2 text-[10px]" onClick={() => toggleAvailability(item)}>
+                          {item.operationallyUnavailable ? 'Restore' : 'Disable'}
+                        </Button>
+                      )}
                     </div>
-                    {user?.role === 'BLOOD_BANK' && editValues[item._id] !== undefined && editValues[item._id] !== item.availableUnits && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 w-7 p-0"
-                        onClick={() => handleUpdate(item)}
-                        disabled={saving === item._id}
-                      >
-                        <Save className="w-3.5 h-3.5" />
-                      </Button>
-                    )}
-                    {user?.role === 'BLOOD_BANK' && <Button size="sm" variant="ghost" className="h-7 px-2 text-[10px]" onClick={() => toggleAvailability(item)}>{item.operationallyUnavailable ? 'Restore' : 'Disable'}</Button>}
-                  </div>
-                )) : (
-                  <p className="text-xs text-muted-foreground py-2">No inventory records</p>
-                )}
-              </div>
-            </Card>
-          );
-        })}
-      </div>
+                  )) : (
+                    <p className="text-xs text-muted-foreground py-2">No inventory records</p>
+                  )}
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
+}
+
+// ─── Main page — role dispatch ────────────────────────────────────────────────
+
+export default function InventoryPage() {
+  const { user } = useAuth();
+
+  // Render role-appropriate view. Both components use hooks internally,
+  // so we avoid calling hooks conditionally at the top level.
+  if (user?.role === 'HOSPITAL') {
+    return <HospitalInventoryView />;
+  }
+
+  // BLOOD_BANK and ADMIN both see the full inventory management view.
+  return <BloodBankInventoryView />;
 }

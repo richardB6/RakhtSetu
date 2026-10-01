@@ -118,7 +118,7 @@ async function createDonor(user: mongoose.Types.ObjectId) {
     userId: user,
     bloodGroup: 'O+',
     address: 'Security test address',
-    city: 'Test City',
+    city: `${prefix} City`,
     state: 'Test State',
     pincode: '400001',
     location: { type: 'Point', coordinates: [72.8777, 19.076] },
@@ -372,4 +372,34 @@ test('10. fulfilled emergency cannot be modified', async () => {
   const unchanged = await EmergencyRequest.findById(request._id);
   assert.ok(unchanged);
   assert.equal(unchanged.status, 'FULFILLED');
+});
+
+test('11. donor network page and API enforce role and privacy policy', async () => {
+  const adminPage = await api('/donors', { headers: jsonHeaders(users.admin.cookie), redirect: 'manual' });
+  const bankPage = await api('/donors', { headers: jsonHeaders(users['blood-bank'].cookie), redirect: 'manual' });
+  const hospitalPage = await api('/donors', { headers: jsonHeaders(users['hospital-a'].cookie), redirect: 'manual' });
+  assert.equal(adminPage.status, 200);
+  assert.equal(bankPage.status, 200);
+  assert.equal(hospitalPage.status, 307);
+  assert.match(hospitalPage.headers.get('location') ?? '', /\/unauthorized/);
+
+  const donorCity = encodeURIComponent(`${prefix} City`);
+  const adminResponse = await api(`/api/donors?search=${donorCity}`, { headers: jsonHeaders(users.admin.cookie) });
+  assert.equal(adminResponse.status, 200);
+  const adminPayload = await adminResponse.json();
+  assert.ok(adminPayload.data.some((donor: { userId?: { email?: string } }) => donor.userId?.email));
+
+  const bankResponse = await api(`/api/donors?search=${donorCity}`, { headers: jsonHeaders(users['blood-bank'].cookie) });
+  assert.equal(bankResponse.status, 200);
+  const bankPayload = await bankResponse.json();
+  assert.ok(bankPayload.data.length > 0);
+  for (const donor of bankPayload.data) {
+    assert.equal(donor.userId, undefined);
+    assert.equal(donor.gender, undefined);
+    assert.equal(donor.lastDonationDate, undefined);
+    assert.equal(donor.isAvailable, true);
+  }
+
+  const hospitalResponse = await api('/api/donors', { headers: jsonHeaders(users['hospital-a'].cookie) });
+  assert.equal(hospitalResponse.status, 403);
 });

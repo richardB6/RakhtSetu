@@ -12,9 +12,7 @@ import { Notification } from '@/models/Notification';
 import { AuditLog } from '@/models/AuditLog';
 import { Escalation } from '@/models/Escalation';
 import { hashPassword } from '@/lib/auth/password';
-import { verifyAccessToken } from '@/lib/auth/jwt';
-import { COOKIE_NAMES } from '@/lib/auth/cookies';
-import { BLOOD_GROUPS, COMPONENT_TYPES, SEVERITY_LEVELS } from '@/lib/engine/compatibility';
+import { BLOOD_GROUPS } from '@/lib/engine/compatibility';
 import type { NotificationType, NotificationSeverity } from '@/types';
 
 // Maharashtra Locations
@@ -213,7 +211,7 @@ export async function POST(req: NextRequest) {
         contactEmail: user.email,
         operatingHours: '24/7',
         isOpen: true,
-        componentCapabilities: ['WHOLE_BLOOD', 'PRBC', 'FFP', 'PLATELETS_SDP'],
+        componentCapabilities: ['WHOLE_BLOOD', 'PRBC', 'PLATELETS_RDP', 'PLATELETS_SDP', 'FFP', 'CRYO'],
       });
 
       if (isDemoUser) {
@@ -221,37 +219,27 @@ export async function POST(req: NextRequest) {
         await user.save();
       }
 
-      // Create Inventory
+      // Create full inventory — all 8 blood groups × 6 components (48 slots)
+      // Demo blood banks start with realistic but modest stock levels.
+      const ALL_COMPONENTS = ['WHOLE_BLOOD', 'PRBC', 'PLATELETS_RDP', 'PLATELETS_SDP', 'FFP', 'CRYO'] as const;
       for (const bg of BLOOD_GROUPS) {
-        await Inventory.create({
-          bloodBankId: bloodBank._id,
-          bloodGroup: bg,
-          component: 'PRBC',
-          availableUnits: Math.floor(Math.random() * 14) + 2, // 2-15
-          reservedUnits: Math.floor(Math.random() * 4), // 0-3
-          lastUpdated: new Date(),
-        });
-        inventoryCount++;
-
-        if (Math.random() > 0.5) {
+        for (const comp of ALL_COMPONENTS) {
+          // Demo blood bank (i===0) gets solid stock so matching engine finds matches.
+          // Other banks get varied levels.
+          const baseUnits = isDemoUser ? Math.floor(Math.random() * 12) + 4 : Math.floor(Math.random() * 15);
+          const avail = baseUnits;
+          const reserved = 0;
           await Inventory.create({
             bloodBankId: bloodBank._id,
             bloodGroup: bg,
-            component: 'FFP',
-            availableUnits: Math.floor(Math.random() * 10) + 1,
-            reservedUnits: 0,
+            component: comp,
+            availableUnits: avail,
+            reservedUnits: reserved,
+            totalUnits: avail + reserved,
+            status: avail > 0 ? 'AVAILABLE' : 'UNAVAILABLE',
+            operationallyUnavailable: false,
             lastUpdated: new Date(),
-          });
-          inventoryCount++;
-        }
-        if (Math.random() > 0.8) {
-          await Inventory.create({
-            bloodBankId: bloodBank._id,
-            bloodGroup: bg,
-            component: 'PLATELETS_SDP',
-            availableUnits: Math.floor(Math.random() * 5) + 1,
-            reservedUnits: 0,
-            lastUpdated: new Date(),
+            notes: '[DEMO] Sample inventory record — not verified real-world stock',
           });
           inventoryCount++;
         }
@@ -307,10 +295,11 @@ export async function POST(req: NextRequest) {
     }
 
     // Create Emergency Requests (15)
+    const createdActiveRequests: mongoose.Types.ObjectId[] = [];
     if (firstHospitalId) {
       const statuses = [
-        ...Array(2).fill('CREATED'),
-        ...Array(3).fill('MATCHING'),
+        ...Array(3).fill('CREATED'),       // 3 active — will run matching engine
+        ...Array(2).fill('MATCHING'),
         ...Array(2).fill('RESOURCES_NOTIFIED'),
         ...Array(3).fill('FULFILLED'),
         ...Array(2).fill('CANCELLED'),
@@ -324,6 +313,9 @@ export async function POST(req: NextRequest) {
         ...Array(7).fill('NORMAL')
       ];
 
+      // Only use components that blood banks support in componentCapabilities
+      const SUPPORTED_COMPONENTS = ['WHOLE_BLOOD', 'PRBC', 'PLATELETS_RDP', 'PLATELETS_SDP', 'FFP', 'CRYO'] as const;
+
       for (let i = 0; i < 15; i++) {
         const status = statuses[i];
         const severity = severities[i];
@@ -334,10 +326,11 @@ export async function POST(req: NextRequest) {
           createdBy: demoHospitalUser._id,
           patientReference: `PAT-${2000 + i}`,
           bloodGroup: getRandomElement(BLOOD_GROUPS),
-          component: getRandomElement(COMPONENT_TYPES),
-          quantity: Math.floor(Math.random() * 6) + 1,
+          component: getRandomElement(SUPPORTED_COMPONENTS),
+          quantity: Math.floor(Math.random() * 4) + 1,
           severity: severity,
-          requiredBy: new Date(Date.now() + (Math.random() * 48) * 60 * 60 * 1000), // Within 48 hours
+          requiredBy: new Date(Date.now() + (Math.random() * 48 + 4) * 60 * 60 * 1000), // 4–52 hours from now
+          searchRadiusKm: 50, // Wide enough to find nearby blood banks in demo
           location: {
             type: 'Point',
             coordinates: firstHospitalLocation,
@@ -357,8 +350,25 @@ export async function POST(req: NextRequest) {
           reqData.cancellationReason = 'Patient no longer needs it';
         }
 
-        await EmergencyRequest.create(reqData);
+        const created = await EmergencyRequest.create(reqData);
         requestCount++;
+
+        // Track CREATED requests to run matching engine after all are seeded
+        if (status === 'CREATED') {
+          createdActiveRequests.push(created._id as mongoose.Types.ObjectId);
+        }
+      }
+    }
+
+    // Run matching engine for active CREATED requests to populate blood bank incoming requests panel
+    let matchCount = 0;
+    for (const reqId of createdActiveRequests) {
+      try {
+        const { runMatchingEngine } = await import('@/lib/services/matching.service');
+        const matches = await runMatchingEngine(reqId.toString(), adminUser._id.toString(), true);
+        matchCount += matches.length;
+      } catch (matchErr) {
+        console.warn(`[Seed] Matching engine skipped for ${reqId}:`, matchErr instanceof Error ? matchErr.message : matchErr);
       }
     }
 
@@ -403,6 +413,7 @@ export async function POST(req: NextRequest) {
         donors: donorCount,
         inventories: inventoryCount,
         requests: requestCount,
+        matches: matchCount,
         notifications: notificationCount,
         auditLogs: auditLogCount,
       }

@@ -19,6 +19,15 @@ const locationSchema = z.object({
   coordinates: z.array(z.number()).length(2),
 });
 
+/**
+ * Preprocessor that converts empty strings and null to undefined so that
+ * optional date fields are skipped rather than triggering "Invalid Date".
+ */
+const optionalDate = z.preprocess(
+  (v) => (v === '' || v === null || v === undefined ? undefined : v),
+  z.coerce.date().optional()
+);
+
 export const hospitalProfileSchema = z.object({
   name: z.string().trim().min(2),
   registrationNumber: z.string().trim().min(1),
@@ -56,7 +65,7 @@ export const bloodBankProfileSchema = z.object({
 
 export const donorProfileSchema = z.object({
   bloodGroup: z.enum(['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']),
-  dateOfBirth: z.coerce.date().optional(),
+  dateOfBirth: optionalDate,
   gender: z.enum(['MALE', 'FEMALE', 'OTHER']).optional(),
   address: z.string().trim().min(1),
   city: z.string().trim().min(1),
@@ -67,6 +76,8 @@ export const donorProfileSchema = z.object({
   isAvailable: z.boolean().optional(),
   availabilityRadius: z.number().positive().optional(),
   emergencyNotificationsEnabled: z.boolean().optional(),
+  /** Optional – set if the donor has donated before. Left blank → omitted from form payload. */
+  lastDonationDate: optionalDate,
 }).strict();
 
 export type LoginInput = z.infer<typeof loginSchema>;
