@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Activity, AlertTriangle, ShieldAlert } from 'lucide-react';
 import { Label } from '@/components/ui/label';
@@ -14,6 +14,8 @@ export default function NewEmergencyPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const submitting = useRef(false);
+  const submissionKey = useRef<string | null>(null);
   
   // Form State
   const [formData, setFormData] = useState({
@@ -41,13 +43,16 @@ export default function NewEmergencyPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting.current) return;
+    submitting.current = true;
+    submissionKey.current ??= globalThis.crypto.randomUUID();
     setLoading(true);
     setError('');
 
     try {
       const res = await fetch('/api/emergencies', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': submissionKey.current },
         body: JSON.stringify({
           ...formData,
           patientAge: formData.patientAge ? parseInt(formData.patientAge) : undefined,
@@ -56,15 +61,16 @@ export default function NewEmergencyPage() {
       });
 
       const data = await res.json();
-      if (data.success) {
+      if (res.ok && data.success) {
         // Success Toast could be added here
         router.push(`/emergencies/${data.data._id}`);
       } else {
-        setError(data.message || 'Failed to create emergency request.');
+        setError(data.message || data.errors?.[0]?.message || 'Failed to create emergency request.');
       }
     } catch (err) {
       setError('An unexpected error occurred.');
     } finally {
+      submitting.current = false;
       setLoading(false);
     }
   };

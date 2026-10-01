@@ -5,6 +5,7 @@ export interface IEmergencyRequest extends Document {
   hospitalId: mongoose.Types.ObjectId;
   createdBy: mongoose.Types.ObjectId;
   patientReference: string;
+  submissionKey?: string;
   patientAge?: number;
   patientGender?: string;
   bloodGroup: 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-';
@@ -20,6 +21,7 @@ export interface IEmergencyRequest extends Document {
   address: string;
   city: string;
   status: 'DRAFT' | 'CREATED' | 'MATCHING' | 'RESOURCES_NOTIFIED' | 'RESPONSES_RECEIVED' | 'RESOURCE_SELECTED' | 'RESERVED' | 'PROCESSING' | 'IN_TRANSIT' | 'FULFILLED' | 'CANCELLED' | 'EXPIRED' | 'ESCALATED';
+  matchingMessage?: string;
   contactPerson: string;
   contactPhone: string;
   notes?: string;
@@ -45,6 +47,7 @@ const EmergencyRequestSchema = new Schema<IEmergencyRequest>(
     hospitalId: { type: Schema.Types.ObjectId, ref: 'Hospital', required: true },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     patientReference: { type: String, required: true },
+    submissionKey: { type: String },
     patientAge: { type: Number },
     patientGender: { type: String },
     bloodGroup: { type: String, enum: ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'], required: true },
@@ -64,6 +67,7 @@ const EmergencyRequestSchema = new Schema<IEmergencyRequest>(
       enum: ['DRAFT', 'CREATED', 'MATCHING', 'RESOURCES_NOTIFIED', 'RESPONSES_RECEIVED', 'RESOURCE_SELECTED', 'RESERVED', 'PROCESSING', 'IN_TRANSIT', 'FULFILLED', 'CANCELLED', 'EXPIRED', 'ESCALATED'], 
       default: 'CREATED' 
     },
+    matchingMessage: { type: String },
     contactPerson: { type: String, required: true },
     contactPhone: { type: String, required: true },
     notes: { type: String },
@@ -84,6 +88,7 @@ const EmergencyRequestSchema = new Schema<IEmergencyRequest>(
 );
 
 EmergencyRequestSchema.index({ requestId: 1 }, { unique: true });
+EmergencyRequestSchema.index({ submissionKey: 1 }, { unique: true, sparse: true });
 EmergencyRequestSchema.index({ status: 1, severity: 1, createdAt: -1 });
 EmergencyRequestSchema.index({ hospitalId: 1, status: 1 });
 EmergencyRequestSchema.index({ location: '2dsphere' });

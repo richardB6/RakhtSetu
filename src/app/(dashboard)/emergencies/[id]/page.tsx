@@ -132,7 +132,7 @@ export default function EmergencyDetailPage() {
   const severityConfig = SEVERITY_CONFIG[emergency.severity];
   
   const canRunMatching = (user?.role === 'HOSPITAL' || user?.role === 'ADMIN') && 
-    (emergency.status === 'CREATED' || emergency.status === 'MATCHING' || emergency.status === 'RESOURCES_NOTIFIED');
+    (emergency.status === 'CREATED' || emergency.status === 'MATCHING' || emergency.status === 'RESOURCES_NOTIFIED' || emergency.status === 'ESCALATED');
 
   const getScoreColor = (score: number) => {
     if (score >= 80) return 'text-emerald-500';
@@ -170,6 +170,13 @@ export default function EmergencyDetailPage() {
           <Badge variant="outline" className="uppercase">{emergency.status.replace(/_/g, ' ')}</Badge>
         </div>
       </div>
+
+      {emergency.matchingMessage && (
+        <div className="flex items-start gap-2 rounded-md border border-amber-300/50 bg-amber-50 p-3 text-sm text-amber-900">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{emergency.matchingMessage}</span>
+        </div>
+      )}
 
       {/* 3-Column Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-10 gap-6">

@@ -168,6 +168,7 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
   // notifications and ranks.
   await Match.deleteMany({ emergencyRequestId: request._id, status: { $in: ['PENDING', 'NOTIFIED'] } });
   request.status = 'MATCHING';
+  request.matchingMessage = undefined;
   request.matchingStartedAt = new Date();
   await request.save();
 
@@ -182,10 +183,14 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
     coordinates: request.location.coordinates as [number, number],
   };
 
+  const outstandingQuantity = Math.max(1, request.quantity - request.quantityFulfilled);
+  const bloodBankMatches = new Map<string, any>();
+
   // Query Blood Banks
   const bloodBanks = await BloodBank.aggregate([
     {
       $geoNear: {
+        key: 'location',
         near: requestPoint,
         distanceField: 'distance',
         maxDistance: request.searchRadiusKm * 1000,
@@ -209,7 +214,7 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
       bloodBankId: bb._id,
       bloodGroup: { $in: compatibleGroups },
       component: request.component,
-      availableUnits: { $gt: 0 },
+      availableUnits: { $gte: outstandingQuantity },
       operationallyUnavailable: { $ne: true },
       status: { $ne: 'UNAVAILABLE' },
     });
@@ -230,7 +235,7 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
         component: request.component as ComponentType,
         distanceKm: bbDistanceKm,
         availableQuantity: inv.availableUnits,
-        requestedQuantity: request.quantity,
+        requestedQuantity: outstandingQuantity,
         isVerified: user.verificationStatus === 'VERIFIED',
         responseRate,
         severity: request.severity,
@@ -238,7 +243,7 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
         asOf: request.matchingStartedAt,
       });
 
-      allMatches.push({
+      const candidate = {
         emergencyRequestId: request._id,
         resourceType: 'BLOOD_BANK',
         resourceId: bb._id,
@@ -251,14 +256,26 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
         isVerified: user.verificationStatus === 'VERIFIED',
         reasons: matchResult.reasons,
         status: 'PENDING',
-      });
+      };
+      const bankId = bb._id.toString();
+      const previous = bloodBankMatches.get(bankId);
+      if (!previous || candidate.score > previous.score ||
+          (candidate.score === previous.score && candidate.availableQuantity > previous.availableQuantity)) {
+        bloodBankMatches.set(bankId, candidate);
+      }
     }
   }
+  allMatches.push(...bloodBankMatches.values());
 
   // Query Donors
+  const donorIndexes = await Donor.collection.indexes();
+  if (!donorIndexes.some((index) => index.key.location === '2dsphere')) {
+    await Donor.collection.createIndex({ location: '2dsphere' });
+  }
   const donors = await Donor.aggregate([
     {
       $geoNear: {
+        key: 'location',
         near: requestPoint,
         distanceField: 'distance',
         maxDistance: request.searchRadiusKm * 1000,
@@ -328,6 +345,9 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
 
   // Update request
   request.status = createdMatches.length > 0 ? 'RESOURCES_NOTIFIED' : 'ESCALATED';
+  request.matchingMessage = createdMatches.length > 0
+    ? undefined
+    : `No eligible blood bank or donor was found within ${request.searchRadiusKm} km. Confirm the location, compatible component capability, and verified resource availability, or expand the search radius.`;
   request.responseDeadline = createdMatches.length > 0
     ? new Date(Date.now() + request.responseTimeoutMinutes * 60 * 1000)
     : undefined;
@@ -401,6 +421,50 @@ export async function getMatchesForRequest(emergencyRequestId: string, userId?: 
       [match.resourceType === 'BLOOD_BANK' ? 'bloodBank' : 'donor']: resource,
     };
   }));
+}
+
+export async function recoverStaleMatchingRequests(limit = 5) {
+  await connectToDatabase();
+
+  const staleBefore = new Date(Date.now() - 60_000);
+  const staleRequestFilter = {
+    status: 'MATCHING' as const,
+    matchCount: { $in: [0, null] },
+    $or: [
+      { matchingStartedAt: { $lt: staleBefore } },
+      { matchingStartedAt: { $exists: false }, createdAt: { $lt: staleBefore } },
+    ],
+  };
+  const staleRequests = await EmergencyRequest.find(staleRequestFilter)
+    .select('_id createdBy')
+    .sort({ createdAt: 1 })
+    .limit(limit)
+    .lean();
+
+  for (const staleRequest of staleRequests) {
+    const claimedAt = new Date();
+    const claimedRequest = await EmergencyRequest.findOneAndUpdate(
+      { ...staleRequestFilter, _id: staleRequest._id },
+      { $set: { matchingStartedAt: claimedAt, matchingMessage: undefined } },
+      { returnDocument: 'after' }
+    );
+    if (!claimedRequest) continue;
+
+    try {
+      await runMatchingEngine(claimedRequest._id.toString(), claimedRequest.createdBy.toString());
+    } catch (error) {
+      console.error('[Matching recovery] Failed to resume stale request:', error);
+      await EmergencyRequest.updateOne(
+        { _id: claimedRequest._id, status: 'MATCHING', matchingStartedAt: claimedAt },
+        {
+          $set: {
+            status: 'ESCALATED',
+            matchingMessage: 'Matching could not complete. Confirm resource availability or contact an administrator.',
+          },
+        }
+      );
+    }
+  }
 }
 
 export async function respondToMatch(matchId: string, userId: string, accept: boolean, declineReason?: string) {

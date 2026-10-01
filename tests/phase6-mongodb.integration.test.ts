@@ -9,6 +9,8 @@ import { Inventory } from '../src/models/Inventory.ts';
 import { EmergencyRequest } from '../src/models/EmergencyRequest.ts';
 import { Match } from '../src/models/Match.ts';
 import { Reservation } from '../src/models/Reservation.ts';
+import { Notification } from '../src/models/Notification.ts';
+import { AuditLog } from '../src/models/AuditLog.ts';
 
 for (const line of fs.readFileSync('.env.local', 'utf8').split(/\r?\n/)) {
   const separator = line.indexOf('=');
@@ -20,6 +22,10 @@ for (const line of fs.readFileSync('.env.local', 'utf8').split(/\r?\n/)) {
 
 let connectToDatabase: typeof import('../src/lib/db/mongodb.ts').connectToDatabase;
 let respondToMatch: typeof import('../src/lib/services/matching.service.ts').respondToMatch;
+let runMatchingEngine: typeof import('../src/lib/services/matching.service.ts').runMatchingEngine;
+let createEmergencyRequest: typeof import('../src/lib/services/emergency.service.ts').createEmergencyRequest;
+let signAccessToken: typeof import('../src/lib/auth/jwt.ts').signAccessToken;
+let getIncomingMatches: typeof import('../src/app/api/matches/route.ts').GET;
 let releaseRequestReservations: typeof import('../src/lib/services/reservation.service.ts').releaseRequestReservations;
 let reserveAcceptedMatch: typeof import('../src/lib/services/reservation.service.ts').reserveAcceptedMatch;
 let servicesLoaded = false;
@@ -28,6 +34,10 @@ async function loadServices() {
   if (servicesLoaded) return;
   ({ connectToDatabase } = await import('../src/lib/db/mongodb.ts'));
   ({ respondToMatch } = await import('../src/lib/services/matching.service.ts'));
+  ({ runMatchingEngine } = await import('../src/lib/services/matching.service.ts'));
+  ({ createEmergencyRequest } = await import('../src/lib/services/emergency.service.ts'));
+  ({ signAccessToken } = await import('../src/lib/auth/jwt.ts'));
+  ({ GET: getIncomingMatches } = await import('../src/app/api/matches/route.ts'));
   ({ releaseRequestReservations, reserveAcceptedMatch } = await import('../src/lib/services/reservation.service.ts'));
   servicesLoaded = true;
 }
@@ -159,7 +169,12 @@ async function createFixture(quantity: number, requestSuffix: string) {
 
 async function cleanup() {
   if (mongoose.connection.readyState !== 1) return;
+  const matchIds = await Match.find({ emergencyRequestId: { $in: createdIds.requests } }).distinct('_id');
+  await Notification.deleteMany({ referenceId: { $in: matchIds } });
+  await Notification.deleteMany({ userId: { $in: createdIds.users } });
+  await AuditLog.deleteMany({ description: { $regex: prefix } });
   await Reservation.deleteMany({ emergencyRequestId: { $in: createdIds.requests } });
+  await Match.deleteMany({ emergencyRequestId: { $in: createdIds.requests } });
   await Match.deleteMany({ _id: { $in: createdIds.matches } });
   await EmergencyRequest.deleteMany({ _id: { $in: createdIds.requests } });
   await Inventory.deleteMany({ _id: { $in: createdIds.inventory } });
@@ -167,6 +182,106 @@ async function cleanup() {
   await Hospital.deleteMany({ _id: { $in: createdIds.hospitals } });
   await User.deleteMany({ _id: { $in: createdIds.users } });
 }
+
+test('Belagavi hospital request routes once to eligible bank and persists responses', async (t) => {
+  if (!(await requireDatabase(t))) return;
+  try {
+    const hospitalUser = await User.create({
+      email: `${prefix}-belagavi-hospital@example.invalid`, password: 'integration-test-password',
+      name: `${prefix} Belagavi Hospital`, phone: '9999999999', role: 'HOSPITAL', verificationStatus: 'VERIFIED',
+    });
+    createdIds.users.push(hospitalUser._id);
+    const bankUser = await User.create({
+      email: `${prefix}-belagavi-bank@example.invalid`, password: 'integration-test-password',
+      name: `${prefix} Belagavi Bank`, phone: '9999999998', role: 'BLOOD_BANK', verificationStatus: 'VERIFIED',
+    });
+    createdIds.users.push(bankUser._id);
+    const hospital = await Hospital.create({
+      userId: hospitalUser._id, name: `${prefix} Belagavi Hospital`, registrationNumber: `${prefix}-belagavi`,
+      type: 'PRIVATE', address: 'Belagavi test address', city: 'Belagavi', state: 'Karnataka', pincode: '590001',
+      location: { type: 'Point', coordinates: [74.4977, 15.8497] }, contactPerson: 'Test Contact',
+      contactPhone: '9999999999', contactEmail: `${prefix}-belagavi-hospital@example.invalid`, operatingHours: '24/7',
+    });
+    createdIds.hospitals.push(hospital._id);
+    const bank = await BloodBank.create({
+      userId: bankUser._id, name: `${prefix} Belagavi Bank`, licenseNumber: `${prefix}-belagavi-license`,
+      type: 'STANDALONE', address: 'Belagavi bank address', city: 'Belagavi', state: 'Karnataka', pincode: '590001',
+      location: { type: 'Point', coordinates: [74.501, 15.852] }, contactPerson: 'Test Contact',
+      contactPhone: '9999999998', contactEmail: `${prefix}-belagavi-bank@example.invalid`, operatingHours: '24/7',
+      operationalStatus: 'OPEN', componentCapabilities: ['PRBC'],
+    });
+    createdIds.banks.push(bank._id);
+    for (const bloodGroup of ['A+', 'O-'] as const) {
+      const inventory = await Inventory.create({
+        bloodBankId: bank._id, bloodGroup, component: 'PRBC', availableUnits: 5, reservedUnits: 0,
+        totalUnits: 5, lastUpdated: new Date(),
+      });
+      createdIds.inventory.push(inventory._id);
+    }
+
+    const input = {
+      patientReference: `${prefix}-belagavi-patient`, bloodGroup: 'A+' as const, component: 'PRBC' as const,
+      quantity: 4, severity: 'HIGH' as const, requiredBy: new Date(Date.now() + 60 * 60 * 1000),
+      contactPerson: 'Test Contact', contactPhone: '9999999999',
+    };
+    const submissionKey = `${prefix}-submission-key`;
+    const first = await createEmergencyRequest(input, hospital._id.toString(), hospitalUser._id.toString(), submissionKey);
+    const duplicate = await createEmergencyRequest(input, hospital._id.toString(), hospitalUser._id.toString(), submissionKey);
+    assert.equal(first.created, true);
+    assert.equal(duplicate.created, false);
+    assert.equal(duplicate.request._id.toString(), first.request._id.toString());
+    createdIds.requests.push(first.request._id);
+
+    first.request.status = 'MATCHING';
+    first.request.matchingStartedAt = new Date(Date.now() - 120_000);
+    first.request.matchCount = 0;
+    await first.request.save();
+
+    const token = await signAccessToken({
+      userId: bankUser._id.toString(),
+      email: bankUser.email,
+      role: 'BLOOD_BANK',
+      name: bankUser.name,
+      verificationStatus: 'VERIFIED',
+    });
+    const { NextRequest } = await import('next/server');
+    const requestMatches = async (query: string) => {
+      const request = new NextRequest(`http://localhost/api/matches${query}`, {
+        headers: { cookie: `rs_access_token=${token}` },
+      });
+      const response = await getIncomingMatches(request, { params: Promise.resolve({}) });
+      assert.equal(response.status, 200);
+      return response.json();
+    };
+    const actionable = await requestMatches('?status=NOTIFIED,PENDING&limit=50');
+    const all = await requestMatches('?limit=50');
+    const routedRequest = await EmergencyRequest.findById(first.request._id);
+    assert.equal(routedRequest?.city, 'Belagavi');
+    assert.equal(routedRequest?.status, 'RESOURCES_NOTIFIED');
+    const bankMatches = await Match.find({ emergencyRequestId: first.request._id, resourceUserId: bankUser._id });
+    assert.equal(bankMatches.length, 1);
+    assert.ok(['PENDING', 'NOTIFIED'].includes(bankMatches[0].status));
+    assert.ok(actionable.data.some((match: { _id: string }) => match._id === bankMatches[0]._id.toString()));
+    assert.ok(all.data.some((match: { _id: string }) => match._id === bankMatches[0]._id.toString()));
+    assert.equal(actionable.data.find((match: { _id: string }) => match._id === bankMatches[0]._id.toString()).emergencyRequestId.city, 'Belagavi');
+
+    await respondToMatch(bankMatches[0]._id.toString(), bankUser._id.toString(), true);
+    const hospitalView = await EmergencyRequest.findById(first.request._id);
+    const bankView = await Match.findById(bankMatches[0]._id);
+    assert.equal(hospitalView?.status, 'RESPONSES_RECEIVED');
+    assert.equal(bankView?.status, 'RESERVED');
+    createdIds.matches.push(...bankMatches.map((match) => match._id));
+
+    const noStockRequest = await createEmergencyRequest({ ...input, component: 'FFP' }, hospital._id.toString(), hospitalUser._id.toString(), `${prefix}-no-recipient`);
+    createdIds.requests.push(noStockRequest.request._id);
+    await runMatchingEngine(noStockRequest.request._id.toString(), hospitalUser._id.toString());
+    const escalatedRequest = await EmergencyRequest.findById(noStockRequest.request._id);
+    assert.equal(escalatedRequest?.status, 'ESCALATED');
+    assert.match(escalatedRequest?.matchingMessage ?? '', /No eligible blood bank or donor/);
+  } finally {
+    await cleanup();
+  }
+});
 
 test('MongoDB workflow creates, reserves, and releases inventory for an accepted match', async (t) => {
   if (!(await requireDatabase(t))) return;

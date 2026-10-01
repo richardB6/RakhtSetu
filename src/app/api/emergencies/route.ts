@@ -5,6 +5,7 @@ import { createEmergencySchema } from '@/lib/validations/emergency.schema';
 import { Hospital } from '@/models/Hospital';
 import { connectToDatabase } from '@/lib/db/mongodb';
 import { runMatchingEngine } from '@/lib/services/matching.service';
+import { EmergencyRequest } from '@/models/EmergencyRequest';
 
 export const GET = withAuth(async (req, context) => {
   try {
@@ -40,6 +41,11 @@ export const GET = withAuth(async (req, context) => {
 
 export const POST = withAuth(async (req, context) => {
   try {
+    const submissionKey = req.headers.get('idempotency-key');
+    if (!submissionKey || !/^[\da-f-]{36}$/i.test(submissionKey)) {
+      return NextResponse.json({ success: false, message: 'A valid Idempotency-Key is required to submit this request.' }, { status: 400 });
+    }
+
     const body = await req.json();
     const validatedData = createEmergencySchema.parse(body);
     
@@ -49,18 +55,26 @@ export const POST = withAuth(async (req, context) => {
       return NextResponse.json({ success: false, message: 'Hospital profile not found' }, { status: 404 });
     }
 
-    const result = await createEmergencyRequest(validatedData, hospital._id.toString(), context.user.userId);
+    const creation = await createEmergencyRequest(validatedData, hospital._id.toString(), context.user.userId, submissionKey);
+    let request = creation.request;
 
-    // Fire-and-forget: run matching engine asynchronously so the HTTP response
-    // is not blocked. Notifications are persisted to DB so offline recipients
-    // will see them when they next log in.
-    void runMatchingEngine(result._id.toString(), context.user.userId, false).catch(
-      (matchErr: unknown) => {
-        console.error('[Emergency POST] Matching engine error (non-fatal):', matchErr);
+    if (creation.created || (request.status === 'ESCALATED' && request.matchingMessage)) {
+      try {
+        await runMatchingEngine(request._id.toString(), context.user.userId, false);
+      } catch (matchErr) {
+        console.error('[Emergency POST] Matching engine error:', matchErr);
+        const latestRequest = await EmergencyRequest.findById(request._id);
+        if (latestRequest) {
+          if (latestRequest.matchCount === 0) latestRequest.status = 'ESCALATED';
+          latestRequest.matchingMessage = 'Matching could not complete. Retry matching or contact an administrator.';
+          await latestRequest.save();
+          request = latestRequest;
+        }
       }
-    );
+      request = (await EmergencyRequest.findById(request._id)) ?? request;
+    }
 
-    return NextResponse.json({ success: true, data: result }, { status: 201 });
+    return NextResponse.json({ success: true, data: request }, { status: creation.created ? 201 : 200 });
   } catch (error: any) {
     if (error.name === 'ZodError') {
       return NextResponse.json({ success: false, errors: error.errors }, { status: 400 });

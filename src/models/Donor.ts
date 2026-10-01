@@ -58,6 +58,7 @@ const DonorSchema = new Schema<IDonor>(
 );
 
 DonorSchema.index({ userId: 1 }, { unique: true });
+DonorSchema.index({ location: '2dsphere' });
 DonorSchema.index({ bloodGroup: 1, availabilityStatus: 1, location: '2dsphere' });
 DonorSchema.index({ isAvailable: 1, emergencyNotificationsEnabled: 1 });
 

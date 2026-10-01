@@ -8,8 +8,11 @@ import { DashboardStats } from '@/types';
 import mongoose from 'mongoose';
 import { fulfillRequestReservations, releaseRequestReservations } from '@/lib/services/reservation.service';
 
-export async function createEmergencyRequest(data: any, hospitalId: string, userId: string) {
+export async function createEmergencyRequest(data: any, hospitalId: string, userId: string, submissionKey: string) {
   await connectToDatabase();
+
+  const existingRequest = await EmergencyRequest.findOne({ createdBy: userId, submissionKey });
+  if (existingRequest) return { request: existingRequest, created: false };
 
   const hospital = await Hospital.findById(hospitalId);
   if (!hospital) {
@@ -21,6 +24,7 @@ export async function createEmergencyRequest(data: any, hospitalId: string, user
   const requestData = {
     ...data,
     requestId,
+    submissionKey,
     hospitalId: hospital._id,
     createdBy: userId,
     location: hospital.location,
@@ -36,7 +40,15 @@ export async function createEmergencyRequest(data: any, hospitalId: string, user
     escalationLevel: 0,
   };
 
-  const emergencyRequest = await EmergencyRequest.create(requestData);
+  let emergencyRequest;
+  try {
+    emergencyRequest = await EmergencyRequest.create(requestData);
+  } catch (error: any) {
+    if (error?.code !== 11000) throw error;
+    const duplicateRequest = await EmergencyRequest.findOne({ createdBy: userId, submissionKey });
+    if (!duplicateRequest) throw error;
+    return { request: duplicateRequest, created: false };
+  }
 
   await Hospital.findByIdAndUpdate(hospitalId, {
     $inc: { emergencyRequestCount: 1 }
@@ -53,7 +65,7 @@ export async function createEmergencyRequest(data: any, hospitalId: string, user
     newState: emergencyRequest.toObject()
   });
 
-  return emergencyRequest;
+  return { request: emergencyRequest, created: true };
 }
 
 export async function getEmergencyRequests(filters: {

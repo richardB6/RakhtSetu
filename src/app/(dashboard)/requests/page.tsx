@@ -71,6 +71,9 @@ export default function BloodBankRequestsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState('actionable');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalMatches, setTotalMatches] = useState(0);
   const [actionId, setActionId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [declineReason, setDeclineReason] = useState('');
@@ -81,39 +84,24 @@ export default function BloodBankRequestsPage() {
     try {
       const params = new URLSearchParams();
       if (filterStatus === 'actionable') {
-        // Show NOTIFIED + PENDING — the ones needing action
-        params.set('status', 'NOTIFIED');
+        params.set('status', 'NOTIFIED,PENDING');
       } else if (filterStatus !== 'all') {
         params.set('status', filterStatus);
       }
-      params.set('limit', '30');
+      params.set('limit', '50');
+      params.set('page', String(page));
       const res = await fetch(`/api/matches?${params}`);
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Failed to fetch requests');
-
-      let list: MatchEntry[] = data.data || [];
-
-      // For "actionable", also include PENDING matches
-      if (filterStatus === 'actionable') {
-        const pendingRes = await fetch('/api/matches?status=PENDING&limit=30');
-        if (pendingRes.ok) {
-          const pendingData = await pendingRes.json();
-          const pendingMatches: MatchEntry[] = pendingData.data || [];
-          // Merge, deduplicate by _id
-          const ids = new Set(list.map((m) => m._id));
-          for (const m of pendingMatches) {
-            if (!ids.has(m._id)) list.push(m);
-          }
-        }
-      }
-
-      setMatches(list);
+      if (!res.ok || !data.success) throw new Error(data.message || 'Failed to fetch requests');
+      setMatches(data.data || []);
+      setTotalPages(data.totalPages || 1);
+      setTotalMatches(data.total || 0);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch requests');
     } finally {
       setLoading(false);
     }
-  }, [filterStatus]);
+  }, [filterStatus, page]);
 
   useEffect(() => {
     void fetchMatches();
@@ -176,7 +164,7 @@ export default function BloodBankRequestsPage() {
           <Button variant="outline" size="sm" onClick={fetchMatches} disabled={loading}>
             <RefreshCw className={`w-4 h-4 mr-1 ${loading ? 'animate-spin' : ''}`} /> Refresh
           </Button>
-          <Select value={filterStatus} onValueChange={(v) => setFilterStatus(v ?? 'actionable')}>
+          <Select value={filterStatus} onValueChange={(v) => { setFilterStatus(v ?? 'actionable'); setPage(1); }}>
             <SelectTrigger className="w-40 h-9 text-sm">
               <SelectValue placeholder="Filter" />
             </SelectTrigger>
@@ -209,6 +197,11 @@ export default function BloodBankRequestsPage() {
         <div className="space-y-3">
           {[1, 2, 3].map((i) => <Skeleton key={i} className="h-40" />)}
         </div>
+      ) : error && matches.length === 0 ? (
+        <Card className="p-12 text-center">
+          <AlertTriangle className="w-10 h-10 text-destructive mx-auto mb-3" />
+          <p className="text-sm text-destructive">Requests could not be loaded. Use Refresh to try again.</p>
+        </Card>
       ) : matches.length === 0 ? (
         <Card className="p-12 text-center">
           <CheckCircle2 className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
@@ -220,6 +213,7 @@ export default function BloodBankRequestsPage() {
         </Card>
       ) : (
         <div className="space-y-4">
+          <p className="text-xs text-muted-foreground">{totalMatches} matching requests</p>
           {matches.map((match) => {
             const emergency = getEmergency(match);
             const isActionable = match.status === 'NOTIFIED' || match.status === 'PENDING';
@@ -388,6 +382,17 @@ export default function BloodBankRequestsPage() {
               </Card>
             );
           })}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between border-t pt-4">
+              <Button variant="outline" size="sm" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page === 1 || loading}>
+                Previous
+              </Button>
+              <span className="text-xs text-muted-foreground">Page {page} of {totalPages}</span>
+              <Button variant="outline" size="sm" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page >= totalPages || loading}>
+                Next
+              </Button>
+            </div>
+          )}
         </div>
       )}
 

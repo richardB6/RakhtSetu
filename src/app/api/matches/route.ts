@@ -4,6 +4,7 @@ import { connectToDatabase } from '@/lib/db/mongodb';
 import { Match } from '@/models/Match';
 import { BloodBank } from '@/models/BloodBank';
 import { Donor } from '@/models/Donor';
+import { recoverStaleMatchingRequests } from '@/lib/services/matching.service';
 
 /**
  * GET /api/matches
@@ -14,7 +15,7 @@ import { Donor } from '@/models/Donor';
  * - ADMIN: all matches (optional filter by ?emergencyId=)
  *
  * Query params:
- *   status   — filter by match status (PENDING, NOTIFIED, ACCEPTED, DECLINED, ...)
+ *   status   — filter by match status; comma-separated values are supported
  *   limit    — default 20, max 50
  *   page     — default 1
  */
@@ -28,6 +29,10 @@ export const GET = withAuth(async (req, context) => {
     const skip = (page - 1) * limitParam;
     const emergencyId = searchParams.get('emergencyId');
 
+    if (context.user.role === 'BLOOD_BANK') {
+      await recoverStaleMatchingRequests();
+    }
+
     const query: Record<string, unknown> = {};
 
     if (context.user.role === 'BLOOD_BANK' || context.user.role === 'DONOR') {
@@ -35,10 +40,8 @@ export const GET = withAuth(async (req, context) => {
     }
 
     if (statusParam) {
-      query.status = statusParam;
-    } else if (context.user.role === 'BLOOD_BANK' || context.user.role === 'DONOR') {
-      // Default: show actionable + recent matches
-      query.status = { $in: ['PENDING', 'NOTIFIED', 'ACCEPTED', 'DECLINED', 'RESERVED'] };
+      const statuses = statusParam.split(',').filter(Boolean);
+      query.status = statuses.length > 1 ? { $in: statuses } : statuses[0];
     }
 
     if (emergencyId) {

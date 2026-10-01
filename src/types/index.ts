@@ -115,6 +115,7 @@ export interface IEmergencyRequest {
   hospitalId: string;
   createdBy: string;
   patientReference: string;
+  submissionKey?: string;
   patientAge?: number;
   patientGender?: string;
   bloodGroup: BloodGroup;
@@ -127,6 +128,7 @@ export interface IEmergencyRequest {
   address: string;
   city: string;
   status: RequestStatus;
+  matchingMessage?: string;
   contactPerson: string;
   contactPhone: string;
   notes?: string;
