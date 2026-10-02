@@ -103,7 +103,7 @@ export async function getNotifications(userId: string, filters?: {
   const skip = (page - 1) * limit;
 
   const notifications = await Notification.find(query)
-    .sort({ priority: -1, createdAt: -1 })
+    .sort({ createdAt: -1, priority: -1 })
     .skip(skip)
     .limit(limit);
 

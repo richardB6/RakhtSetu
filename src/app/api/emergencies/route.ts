@@ -90,7 +90,10 @@ export const POST = withAuth(async (req, context) => {
     const creation = await createEmergencyRequest(validatedData, hospital._id.toString(), context.user.userId, submissionKey);
     let request = creation.request;
 
-    if (creation.created || (request.status === 'ESCALATED' && request.matchingMessage)) {
+    if (
+      creation.created ||
+      (request.matchingMessage && !['CANCELLED', 'EXPIRED', 'FULFILLED'].includes(request.status))
+    ) {
       try {
         await runMatchingEngine(request._id.toString(), context.user.userId, false);
       } catch (matchErr) {

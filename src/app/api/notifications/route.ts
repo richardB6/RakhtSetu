@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth/withAuth';
 import { getNotifications } from '@/lib/services/notification.service';
+import { backfillEligibleDonorMatchNotifications } from '@/lib/services/matching.service';
 
 export const GET = withAuth(async (req, context) => {
   try {
@@ -16,6 +17,9 @@ export const GET = withAuth(async (req, context) => {
     if (severity) filters.severity = severity;
     if (type) filters.type = type;
 
+    if (context.user.role === 'DONOR') {
+      await backfillEligibleDonorMatchNotifications(500, undefined, context.user.userId);
+    }
     const result = await getNotifications(context.user.userId, filters);
     return NextResponse.json({ success: true, ...result });
   } catch (error: any) {

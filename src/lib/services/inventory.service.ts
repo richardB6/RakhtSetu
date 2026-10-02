@@ -2,9 +2,33 @@ import { connectToDatabase } from '@/lib/db/mongodb';
 import { Inventory, InventoryStatus } from '@/models/Inventory';
 import { InventoryHistory, InventoryHistoryAction } from '@/models/InventoryHistory';
 import { BloodGroup, ComponentType } from '@/lib/engine/compatibility';
+import { getAllocatableInventoryUnits } from '@/lib/engine/inventory-policy';
 import { createAuditLog } from '@/lib/services/audit.service';
 export { validateInventoryState, reserveInventoryUnits, releaseInventoryReservation } from '@/lib/engine/inventory-policy';
 import { validateInventoryState, reserveInventoryUnits, releaseInventoryReservation } from '@/lib/engine/inventory-policy';
+
+export async function findAllocatableInventory(
+  bloodBankId: string,
+  bloodGroup: BloodGroup,
+  component: ComponentType,
+  session?: import('mongoose').ClientSession
+) {
+  await connectToDatabase();
+  const query = Inventory.findOne({
+    bloodBankId,
+    bloodGroup,
+    component,
+    availableUnits: { $gt: 0 },
+    reservedUnits: { $gte: 0 },
+    totalUnits: { $gte: 0 },
+    operationallyUnavailable: { $ne: true },
+    status: { $in: ['AVAILABLE', 'RESERVED'] },
+  });
+  if (session) query.session(session);
+  return query;
+}
+
+export { getAllocatableInventoryUnits };
 
 export async function getInventory(bloodBankId?: string) {
   await connectToDatabase();
@@ -122,7 +146,7 @@ export async function reserveUnits(
       component,
       availableUnits: { $gte: units },
       operationallyUnavailable: { $ne: true },
-      status: { $ne: 'UNAVAILABLE' },
+      status: { $in: ['AVAILABLE', 'RESERVED'] },
     },
     {
       $inc: { availableUnits: -units, reservedUnits: units },

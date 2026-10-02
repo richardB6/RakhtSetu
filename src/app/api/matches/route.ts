@@ -4,13 +4,12 @@ import { connectToDatabase } from '@/lib/db/mongodb';
 import { Match } from '@/models/Match';
 import { BloodBank } from '@/models/BloodBank';
 import { Donor } from '@/models/Donor';
-import { Inventory } from '@/models/Inventory';
 import {
   escalateMatchIfInsufficientStock,
   recoverStaleMatchingRequests,
 } from '@/lib/services/matching.service';
-import { getCompatibleDonorGroups, BloodGroup, ComponentType } from '@/lib/engine/compatibility';
-import { getCompatibleAvailableUnits } from '@/lib/engine/inventory-policy';
+import { BloodGroup, ComponentType } from '@/lib/engine/compatibility';
+import { findAllocatableInventory, getAllocatableInventoryUnits } from '@/lib/services/inventory.service';
 
 /**
  * GET /api/matches
@@ -82,22 +81,12 @@ export const GET = withAuth(async (req, context) => {
             typeof emergency.bloodGroup === 'string' &&
             typeof emergency.component === 'string'
           ) {
-            const compatibleGroups = getCompatibleDonorGroups(
+            const inventory = await findAllocatableInventory(
+              match.resourceId.toString(),
               emergency.bloodGroup as BloodGroup,
               emergency.component as ComponentType
             );
-            const inventory = await Inventory.find({
-              bloodBankId: match.resourceId,
-              bloodGroup: { $in: compatibleGroups },
-              component: emergency.component,
-              operationallyUnavailable: { $ne: true },
-              status: { $ne: 'UNAVAILABLE' },
-            }).select('bloodGroup component availableUnits status operationallyUnavailable').lean();
-            availableQuantity = getCompatibleAvailableUnits(
-              inventory,
-              compatibleGroups,
-              emergency.component
-            );
+            availableQuantity = getAllocatableInventoryUnits(inventory);
           }
           if (
             context.user.role === 'BLOOD_BANK' &&

@@ -19,12 +19,20 @@ export default function NotificationsPage() {
   const [notifications, setNotifications] = useState<NotificationMock[]>([]);
   const [filter, setFilter] = useState<'ALL' | 'CRITICAL' | 'UNREAD'>('ALL');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchNotifications = async () => {
-    const response = await fetch('/api/notifications?limit=50');
-    const result = await response.json();
-    setNotifications(response.ok && result.success ? result.data : []);
-    setLoading(false);
+    try {
+      const response = await fetch('/api/notifications?limit=50', { cache: 'no-store' });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.message || 'Failed to load notifications');
+      setNotifications(result.data);
+      setError(null);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Failed to load notifications');
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -88,6 +96,12 @@ export default function NotificationsPage() {
           Mark all as read
         </button>
       </div>
+
+      {error && (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+          {error}
+        </div>
+      )}
 
       <div className="flex gap-2">
         {(['ALL', 'CRITICAL', 'UNREAD'] as const).map(f => (

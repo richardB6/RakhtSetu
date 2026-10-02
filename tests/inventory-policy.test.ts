@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  getAllocatableInventoryUnits,
   getCompatibleAvailableUnits,
   planCompatibleInventoryReservation,
   releaseInventoryReservation,
@@ -39,6 +40,58 @@ test('compatible stock is limited to eligible groups and the requested component
 
   assert.equal(getCompatibleAvailableUnits(inventory, ['A+', 'O+', 'O-'], 'WHOLE_BLOOD'), 1);
   assert.equal(getCompatibleAvailableUnits(inventory, ['A+'], 'WHOLE_BLOOD'), 0);
+});
+
+test('allocatable stock excludes unavailable and disabled records and caps inconsistent reserved quantities', () => {
+  assert.equal(getAllocatableInventoryUnits({
+    bloodGroup: 'AB+',
+    component: 'WHOLE_BLOOD',
+    availableUnits: 1,
+    reservedUnits: 3,
+    totalUnits: 4,
+    status: 'RESERVED',
+  }), 1);
+  assert.equal(getAllocatableInventoryUnits({
+    bloodGroup: 'AB+',
+    component: 'WHOLE_BLOOD',
+    availableUnits: 19,
+    reservedUnits: 0,
+    totalUnits: 19,
+    status: 'AVAILABLE',
+    operationallyUnavailable: true,
+  }), 0);
+  assert.equal(getAllocatableInventoryUnits({
+    bloodGroup: 'AB+',
+    component: 'WHOLE_BLOOD',
+    availableUnits: 19,
+    reservedUnits: 1,
+    totalUnits: 10,
+    status: 'AVAILABLE',
+  }), 9);
+  assert.equal(getAllocatableInventoryUnits({
+    bloodGroup: 'AB+',
+    component: 'WHOLE_BLOOD',
+    availableUnits: 19,
+    status: 'UNAVAILABLE',
+  }), 0);
+});
+
+test('exact requested group and component stock is isolated from other inventory', () => {
+  const inventory = [
+    { _id: 'requested', bloodGroup: 'AB+', component: 'WHOLE_BLOOD', availableUnits: 1, status: 'AVAILABLE' },
+    { _id: 'compatible-group', bloodGroup: 'O-', component: 'WHOLE_BLOOD', availableUnits: 19, status: 'AVAILABLE' },
+    { _id: 'other-component', bloodGroup: 'AB+', component: 'PRBC', availableUnits: 19, status: 'AVAILABLE' },
+  ];
+
+  assert.equal(getCompatibleAvailableUnits(inventory, ['AB+'], 'WHOLE_BLOOD'), 1);
+  assert.throws(
+    () => planCompatibleInventoryReservation(inventory, ['AB+'], 'WHOLE_BLOOD', 2),
+    /Insufficient inventory/
+  );
+  assert.deepEqual(
+    planCompatibleInventoryReservation(inventory, ['AB+'], 'WHOLE_BLOOD', 1).map(({ units }) => units),
+    [1]
+  );
 });
 
 test('compatible allocation spans eligible records without exceeding available units', () => {

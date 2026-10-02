@@ -2,7 +2,6 @@ import mongoose from 'mongoose';
 import { connectToDatabase } from '@/lib/db/mongodb';
 import { EmergencyRequest } from '@/models/EmergencyRequest';
 import { Match } from '@/models/Match';
-import { Inventory } from '@/models/Inventory';
 import { BloodBank } from '@/models/BloodBank';
 import { Donor } from '@/models/Donor';
 import { User } from '@/models/User';
@@ -15,10 +14,19 @@ import {
   reserveAcceptedMatch,
 } from '@/lib/services/reservation.service';
 import { Reservation } from '@/models/Reservation';
-import { getCompatibleAvailableUnits } from '@/lib/engine/inventory-policy';
+import { findAllocatableInventory, getAllocatableInventoryUnits } from '@/lib/services/inventory.service';
 export { rankResources } from '@/lib/engine/matching-policy';
 
 const getAuditLogModel = () => mongoose.models.AuditLog || mongoose.model('AuditLog', new mongoose.Schema({}, { strict: false }));
+
+function isRequestActiveAndUnexpired(request: InstanceType<typeof EmergencyRequest>, now = new Date()) {
+  return ACTIVE_STATUSES.includes(request.status) && request.requiredBy > now;
+}
+
+function isRequestOpenForResponses(request: InstanceType<typeof EmergencyRequest>, now = new Date()) {
+  return isRequestActiveAndUnexpired(request, now) &&
+    (!request.responseDeadline || request.responseDeadline > now);
+}
 
 export interface CalculateMatchScoreParams {
   recipientBloodGroup: BloodGroup;
@@ -148,11 +156,7 @@ async function deliverMatchNotifications(
   donorsOnly = false
 ) {
   const now = new Date();
-  if (
-    ['DRAFT', 'CANCELLED', 'EXPIRED', 'FULFILLED'].includes(request.status) ||
-    request.requiredBy <= now ||
-    (request.responseDeadline && request.responseDeadline <= now)
-  ) return 0;
+  if (!isRequestOpenForResponses(request, now)) return 0;
 
   const pendingMatches = matches.filter((match) => ['PENDING', 'NOTIFIED'].includes(match.status));
   const bankMatches = donorsOnly
@@ -222,6 +226,9 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
   if (['FULFILLED', 'CANCELLED', 'EXPIRED'].includes(request.status)) {
     throw new Error(`Cannot match a ${request.status.toLowerCase()} request`);
   }
+  if (request.requiredBy <= new Date()) {
+    throw new Error('Cannot match an expired emergency request');
+  }
   if (!['CREATED', 'MATCHING', 'ESCALATED'].includes(request.status)) {
     const existing = await Match.find({ emergencyRequestId: request._id }).sort({ rank: 1, _id: 1 });
     if (existing.length > 0) {
@@ -277,19 +284,12 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
     const bbDistanceKm = bb.distance / 1000;
     
     // Check inventory
-    const inventoryItems = await Inventory.find({
-      bloodBankId: bb._id,
-      bloodGroup: { $in: compatibleGroups },
-      component: request.component,
-      availableUnits: { $gt: 0 },
-      operationallyUnavailable: { $ne: true },
-      status: { $ne: 'UNAVAILABLE' },
-    }).lean();
-    const availableQuantity = getCompatibleAvailableUnits(
-      inventoryItems,
-      compatibleGroups,
-      request.component
+    const inventoryItem = await findAllocatableInventory(
+      bb._id.toString(),
+      request.bloodGroup as BloodGroup,
+      request.component as ComponentType
     );
+    const availableQuantity = getAllocatableInventoryUnits(inventoryItem);
     if (availableQuantity < outstandingQuantity) continue;
 
     const user = await User.findOne({
@@ -300,14 +300,9 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
     if (!user) continue;
 
     const responseRate = bb.totalResponseCount > 0 ? bb.acceptedResponseCount / bb.totalResponseCount : -1;
-    const preferredAvailableGroup = compatibleGroups.find((group) =>
-      inventoryItems.some((inventory) => inventory.bloodGroup === group)
-    );
-    if (!preferredAvailableGroup) continue;
-
     const matchResult = calculateMatchScore({
       recipientBloodGroup: request.bloodGroup as BloodGroup,
-      donorBloodGroup: preferredAvailableGroup,
+      donorBloodGroup: request.bloodGroup as BloodGroup,
       component: request.component as ComponentType,
       distanceKm: bbDistanceKm,
       availableQuantity,
@@ -366,7 +361,7 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
     {
       $match: {
         bloodGroup: { $in: compatibleGroups },
-        availabilityStatus: { $nin: ['UNAVAILABLE', 'TEMPORARILY_UNAVAILABLE'] },
+        availabilityStatus: 'AVAILABLE',
         isAvailable: true,
         emergencyNotificationsEnabled: true,
         $expr: { $lte: ['$distance', { $multiply: ['$availabilityRadius', 1000] }] },
@@ -454,11 +449,26 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
   return createdMatches;
 }
 
-export async function backfillEligibleDonorMatchNotifications(limit = 500, requestIds?: string[]) {
+export async function backfillEligibleDonorMatchNotifications(
+  limit = 500,
+  requestIds?: string[],
+  donorUserId?: string
+) {
   await connectToDatabase();
   const now = new Date();
+  let scopedRequestIds: mongoose.Types.ObjectId[] | undefined;
+  if (donorUserId) {
+    const matchQuery: Record<string, unknown> = {
+      resourceType: 'DONOR',
+      resourceUserId: donorUserId,
+      status: { $in: ['PENDING', 'NOTIFIED'] },
+    };
+    if (requestIds) matchQuery.emergencyRequestId = { $in: requestIds };
+    scopedRequestIds = await Match.distinct('emergencyRequestId', matchQuery);
+    if (scopedRequestIds.length === 0) return { requestsChecked: 0, donorMatchesNotified: 0 };
+  }
   const requests = await EmergencyRequest.find({
-    ...(requestIds ? { _id: { $in: requestIds } } : {}),
+    ...(scopedRequestIds ? { _id: { $in: scopedRequestIds } } : requestIds ? { _id: { $in: requestIds } } : {}),
     status: { $in: ACTIVE_STATUSES },
     requiredBy: { $gt: now },
     $or: [
@@ -475,6 +485,7 @@ export async function backfillEligibleDonorMatchNotifications(limit = 500, reque
       emergencyRequestId: request._id,
       resourceType: 'DONOR',
       status: { $in: ['PENDING', 'NOTIFIED'] },
+      ...(donorUserId ? { resourceUserId: donorUserId } : {}),
     });
     donorMatchesNotified += await deliverMatchNotifications(request, donorMatches, true);
   }
@@ -569,6 +580,7 @@ export async function escalateMatchIfInsufficientStock(matchId: string, userId: 
 
   const request = await EmergencyRequest.findById(match.emergencyRequestId);
   if (!request) throw new Error('Associated emergency request not found');
+  if (!isRequestActiveAndUnexpired(request)) return null;
 
   const bloodBank = await BloodBank.findOne({
     _id: match.resourceId,
@@ -577,24 +589,14 @@ export async function escalateMatchIfInsufficientStock(matchId: string, userId: 
     operationalStatus: { $nin: ['UNAVAILABLE', 'CLOSED'] },
     componentCapabilities: request.component,
   }).select('_id');
-  const compatibleGroups = getCompatibleDonorGroups(
-    request.bloodGroup as BloodGroup,
-    request.component as ComponentType
-  );
   const inventory = bloodBank
-    ? await Inventory.find({
-      bloodBankId: bloodBank._id,
-      bloodGroup: { $in: compatibleGroups },
-      component: request.component,
-      operationallyUnavailable: { $ne: true },
-      status: { $ne: 'UNAVAILABLE' },
-    }).select('bloodGroup component availableUnits status operationallyUnavailable').lean()
-    : [];
-  const availableQuantity = getCompatibleAvailableUnits(
-    inventory,
-    compatibleGroups,
-    request.component
-  );
+    ? await findAllocatableInventory(
+      bloodBank._id.toString(),
+      request.bloodGroup as BloodGroup,
+      request.component as ComponentType
+    )
+    : null;
+  const availableQuantity = getAllocatableInventoryUnits(inventory);
   const requiredQuantity = Math.max(1, request.quantity - request.quantityFulfilled);
   if (bloodBank && availableQuantity >= requiredQuantity) return null;
 
@@ -608,7 +610,7 @@ export async function escalateMatchIfInsufficientStock(matchId: string, userId: 
       $set: {
         status: 'DECLINED',
         respondedAt: new Date(),
-        declineReason: `Cannot accept — insufficient stock (${availableQuantity} of ${requiredQuantity} compatible units available)`,
+        declineReason: `Cannot accept — insufficient stock (${availableQuantity} of ${requiredQuantity} ${request.bloodGroup} ${request.component} units available)`,
       },
     },
     { new: true }
@@ -638,6 +640,9 @@ export async function respondToMatch(matchId: string, userId: string, accept: bo
   const request = await EmergencyRequest.findById(match.emergencyRequestId);
   if (!request) {
     throw new Error('Associated emergency request not found');
+  }
+  if (!isRequestOpenForResponses(request)) {
+    throw new Error('Emergency request is no longer active or has expired');
   }
 
   const AuditLogModel = getAuditLogModel();
@@ -763,6 +768,7 @@ async function escalateAfterDecline(
   request: InstanceType<typeof EmergencyRequest>,
   systemUserId: string
 ) {
+  if (!isRequestActiveAndUnexpired(request)) return;
   const AuditLogModel = getAuditLogModel();
 
   while (true) {
@@ -788,24 +794,14 @@ async function escalateAfterDecline(
           verificationStatus: 'VERIFIED',
         }).select('_id').lean()
         : null;
-      const compatibleGroups = getCompatibleDonorGroups(
-        request.bloodGroup as BloodGroup,
-        request.component as ComponentType
-      );
       const inventory = bloodBank && user
-        ? await Inventory.find({
-          bloodBankId: bloodBank._id,
-          bloodGroup: { $in: compatibleGroups },
-          component: request.component,
-          operationallyUnavailable: { $ne: true },
-          status: { $ne: 'UNAVAILABLE' },
-        }).select('bloodGroup component availableUnits status operationallyUnavailable').lean()
-        : [];
-      const availableQuantity = getCompatibleAvailableUnits(
-        inventory,
-        compatibleGroups,
-        request.component
-      );
+        ? await findAllocatableInventory(
+          bloodBank._id.toString(),
+          request.bloodGroup as BloodGroup,
+          request.component as ComponentType
+        )
+        : null;
+      const availableQuantity = getAllocatableInventoryUnits(inventory);
       const requiredQuantity = Math.max(1, request.quantity - request.quantityFulfilled);
       if (!bloodBank || !user || availableQuantity < requiredQuantity) {
         await Match.updateOne(
@@ -816,7 +812,7 @@ async function escalateAfterDecline(
               respondedAt: new Date(),
               declineReason: !bloodBank || !user
                 ? 'Blood bank is no longer eligible'
-                : `Insufficient stock (${availableQuantity} of ${requiredQuantity} compatible units available)`,
+                : `Insufficient stock (${availableQuantity} of ${requiredQuantity} ${request.bloodGroup} ${request.component} units available)`,
             },
           }
         );

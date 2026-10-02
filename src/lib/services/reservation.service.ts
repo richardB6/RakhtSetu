@@ -9,9 +9,9 @@ import { Inventory } from '@/models/Inventory';
 import { InventoryHistory } from '@/models/InventoryHistory';
 import { createAuditLog } from '@/lib/services/audit.service';
 import { createNotification } from '@/lib/services/notification.service';
-import { getCompatibleDonorGroups, BloodGroup, ComponentType } from '@/lib/engine/compatibility';
-import { getCompatibleAvailableUnits, planCompatibleInventoryReservation } from '@/lib/engine/inventory-policy';
-import { reserveUnits, releaseReservation } from '@/lib/services/inventory.service';
+import { ACTIVE_STATUSES, BloodGroup, ComponentType } from '@/lib/engine/compatibility';
+import { getAllocatableInventoryUnits, planCompatibleInventoryReservation } from '@/lib/engine/inventory-policy';
+import { findAllocatableInventory, reserveUnits, releaseReservation } from '@/lib/services/inventory.service';
 
 export class InsufficientStockError extends Error {
   constructor(message = 'Cannot accept — insufficient stock') {
@@ -36,6 +36,14 @@ async function reserveAcceptedMatchInTransaction(
 
   const request = await EmergencyRequest.findById(match.emergencyRequestId).session(session);
   if (!request) throw new Error('Emergency request not found');
+  const now = new Date();
+  if (
+    !ACTIVE_STATUSES.includes(request.status) ||
+    request.requiredBy <= now ||
+    (request.responseDeadline && request.responseDeadline <= now)
+  ) {
+    throw new Error('Emergency request is no longer active or has expired');
+  }
 
   const existing = await Reservation.findOne({ emergencyRequestId: request._id, matchId: match._id }).session(session);
   if (existing) return { reservation: existing, created: false };
@@ -76,24 +84,27 @@ async function reserveAcceptedMatchInTransaction(
     throw new Error('Blood bank is no longer operationally available');
   }
 
-  const compatibleGroups = getCompatibleDonorGroups(request.bloodGroup as BloodGroup, request.component as ComponentType);
   const units = Math.max(1, request.quantity - request.quantityFulfilled);
-  const inventoryItems = await Inventory.find({
-    bloodBankId: bloodBank._id,
-    component: request.component,
-    bloodGroup: { $in: compatibleGroups },
-    availableUnits: { $gt: 0 },
-    operationallyUnavailable: { $ne: true },
-    status: { $ne: 'UNAVAILABLE' },
-  }).session(session);
-  const availableQuantity = getCompatibleAvailableUnits(inventoryItems, compatibleGroups, request.component);
+  const inventoryItem = await findAllocatableInventory(
+    bloodBank._id.toString(),
+    request.bloodGroup as BloodGroup,
+    request.component as ComponentType,
+    session
+  );
+  const inventoryItems = inventoryItem ? [inventoryItem] : [];
+  const availableQuantity = getAllocatableInventoryUnits(inventoryItem);
   if (availableQuantity < units) {
     throw new InsufficientStockError(
-      `Cannot accept — insufficient stock (${availableQuantity} of ${units} compatible units available)`
+      `Cannot accept — insufficient stock (${availableQuantity} of ${units} ${request.bloodGroup} ${request.component} units available)`
     );
   }
 
-  const allocations = planCompatibleInventoryReservation(inventoryItems, compatibleGroups, request.component, units);
+  const allocations = planCompatibleInventoryReservation(
+    inventoryItems,
+    [request.bloodGroup],
+    request.component,
+    units
+  );
   const reservedAllocations = [];
   for (const allocation of allocations) {
     const updatedInventory = await reserveUnits(

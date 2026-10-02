@@ -405,6 +405,17 @@ test('eligible donors receive idempotent matching notifications and ineligible d
     assert.equal(inbox.status, 200);
     assert.ok((await inbox.json()).data.some((notification: { title: string }) => notification.title === 'Emergency Blood Request Match'));
 
+    const donorMatch = donorMatches.find((match) => match.resourceUserId.toString() === eligibleUsers[0]._id.toString());
+    assert.ok(donorMatch);
+    await Notification.deleteOne({ userId: eligibleUsers[0]._id, referenceId: donorMatch._id });
+    await Match.updateOne({ _id: donorMatch._id }, { $set: { status: 'PENDING' } });
+    const recoveredInbox = await callApi(getNotifications, '/api/notifications?limit=50', donorToken);
+    assert.equal(recoveredInbox.status, 200);
+    assert.ok((await recoveredInbox.json()).data.some((notification: { title: string }) => notification.title === 'Emergency Blood Request Match'));
+    const dashboard = await callApi(getDonorDashboard, '/api/donor/dashboard', donorToken);
+    assert.equal(dashboard.status, 200);
+    assert.ok((await dashboard.json()).data.notifications.some((notification: { referenceId: string }) => notification.referenceId === donorMatch._id.toString()));
+
     await Promise.all([
       backfillEligibleDonorMatchNotifications(10, [request._id.toString()]),
       backfillEligibleDonorMatchNotifications(10, [request._id.toString()]),

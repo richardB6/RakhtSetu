@@ -386,16 +386,16 @@ test('MongoDB incoming stock is current and insufficient acceptance escalates wi
   }
 });
 
-test('MongoDB accepts sufficient stock and blocks partial stock for the requested component', async (t) => {
+test('MongoDB accepts exact quantities and blocks partial stock for the requested component', async (t) => {
   if (!(await requireDatabase(t))) return;
   try {
-    const sufficient = await createFixture(2, 'sufficient-stock');
+    const sufficient = await createFixture(1, 'sufficient-stock');
     sufficient.request.quantity = 1;
     await sufficient.request.save();
     await respondToMatch(sufficient.match._id.toString(), sufficient.user._id.toString(), true);
 
     const sufficientInventory = await Inventory.findById(sufficient.inventory._id);
-    assert.equal(sufficientInventory?.availableUnits, 1);
+    assert.equal(sufficientInventory?.availableUnits, 0);
     assert.equal(sufficientInventory?.reservedUnits, 1);
     const activeReservation = await Reservation.findOne({
       emergencyRequestId: sufficient.request._id,
@@ -403,6 +403,18 @@ test('MongoDB accepts sufficient stock and blocks partial stock for the requeste
       status: 'ACTIVE',
     });
     assert.equal(activeReservation?.units, 1);
+
+    const exactQuantity = await createFixture(2, 'exact-quantity-stock');
+    exactQuantity.request.quantity = 2;
+    await exactQuantity.request.save();
+    await respondToMatch(exactQuantity.match._id.toString(), exactQuantity.user._id.toString(), true);
+    const exactQuantityInventory = await Inventory.findById(exactQuantity.inventory._id);
+    assert.equal(exactQuantityInventory?.availableUnits, 0);
+    assert.equal(exactQuantityInventory?.reservedUnits, 2);
+    assert.equal(
+      (await Reservation.findOne({ emergencyRequestId: exactQuantity.request._id, status: 'ACTIVE' }))?.units,
+      2
+    );
 
     const partial = await createFixture(1, 'partial-stock');
     partial.request.quantity = 2;
@@ -460,7 +472,7 @@ test('MongoDB rechecks inventory after it was displayed before allowing acceptan
   }
 });
 
-test('MongoDB reserves and releases compatible stock across inventory records', async (t) => {
+test('MongoDB does not aggregate compatible blood-group stock for acceptance', async (t) => {
   if (!(await requireDatabase(t))) return;
   try {
     const fixture = await createFixture(1, 'split-compatible-stock');
@@ -478,33 +490,75 @@ test('MongoDB reserves and releases compatible stock across inventory records', 
     createdIds.inventory.push(compatibleInventory._id);
 
     const incoming = await getIncomingMatch(fixture);
-    assert.equal(incoming.availableQuantity, 2);
-    await respondToMatch(fixture.match._id.toString(), fixture.user._id.toString(), true);
-
-    const reservation = await Reservation.findOne({ emergencyRequestId: fixture.request._id, status: 'ACTIVE' });
-    assert.equal(reservation?.units, 2);
-    assert.equal(reservation?.inventoryAllocations?.length, 2);
-    for (const inventoryId of [fixture.inventory._id, compatibleInventory._id]) {
-      const reservedInventory = await Inventory.findById(inventoryId);
-      assert.equal(reservedInventory?.availableUnits, 0);
-      assert.equal(reservedInventory?.reservedUnits, 1);
-    }
-
-    await releaseRequestReservations(fixture.request._id.toString(), 'CANCELLED', {
-      userId: fixture.user._id.toString(),
-      userName: fixture.user.name,
-    });
-    for (const inventoryId of [fixture.inventory._id, compatibleInventory._id]) {
-      const releasedInventory = await Inventory.findById(inventoryId);
-      assert.equal(releasedInventory?.availableUnits, 1);
-      assert.equal(releasedInventory?.reservedUnits, 0);
-    }
+    assert.equal(incoming.availableQuantity, 1);
+    assert.equal(incoming.status, 'DECLINED');
+    assert.equal(await Reservation.countDocuments({ emergencyRequestId: fixture.request._id }), 0);
+    assert.equal((await Inventory.findById(fixture.inventory._id))?.availableUnits, 1);
+    assert.equal((await Inventory.findById(compatibleInventory._id))?.availableUnits, 1);
   } finally {
     await cleanup();
   }
 });
 
-test('MongoDB escalation skips banks without sufficient compatible stock and notifies the next eligible bank', async (t) => {
+test('MongoDB incoming stock is scoped to this bank, exact blood group, and exact component', async (t) => {
+  if (!(await requireDatabase(t))) return;
+  try {
+    const fixture = await createFixture(1, 'strict-stock-scope');
+    fixture.request.bloodGroup = 'AB+';
+    fixture.request.component = 'WHOLE_BLOOD';
+    fixture.request.quantity = 2;
+    await fixture.request.save();
+    await BloodBank.updateOne(
+      { _id: fixture.bank._id },
+      { $set: { componentCapabilities: ['WHOLE_BLOOD'] } }
+    );
+    await Inventory.updateOne(
+      { _id: fixture.inventory._id },
+      { $set: { bloodGroup: 'AB+', component: 'WHOLE_BLOOD' } }
+    );
+
+    const otherGroup = await Inventory.create({
+      bloodBankId: fixture.bank._id,
+      bloodGroup: 'O-',
+      component: 'WHOLE_BLOOD',
+      availableUnits: 19,
+      reservedUnits: 0,
+      totalUnits: 19,
+      lastUpdated: new Date(),
+    });
+    const otherComponent = await Inventory.create({
+      bloodBankId: fixture.bank._id,
+      bloodGroup: 'AB+',
+      component: 'PRBC',
+      availableUnits: 19,
+      reservedUnits: 0,
+      totalUnits: 19,
+      lastUpdated: new Date(),
+    });
+    createdIds.inventory.push(otherGroup._id, otherComponent._id);
+
+    const unrelatedBank = await createFixture(19, 'strict-stock-other-bank');
+    const otherBankInventory = await Inventory.create({
+      bloodBankId: unrelatedBank.bank._id,
+      bloodGroup: 'AB+',
+      component: 'WHOLE_BLOOD',
+      availableUnits: 19,
+      reservedUnits: 0,
+      totalUnits: 19,
+      lastUpdated: new Date(),
+    });
+    createdIds.inventory.push(otherBankInventory._id);
+
+    const incoming = await getIncomingMatch(fixture);
+    assert.equal(incoming.availableQuantity, 1);
+    assert.equal(incoming.status, 'DECLINED');
+    assert.equal(await Reservation.countDocuments({ emergencyRequestId: fixture.request._id }), 0);
+  } finally {
+    await cleanup();
+  }
+});
+
+test('MongoDB escalation skips banks without sufficient exact stock and notifies the next eligible bank', async (t) => {
   if (!(await requireDatabase(t))) return;
   try {
     const first = await createFixture(0, 'escalation-no-stock');

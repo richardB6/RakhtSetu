@@ -31,7 +31,7 @@ export default function DonorDashboardPage() {
 
   const load = useCallback(async () => {
     try {
-      const response = await fetch('/api/donor/dashboard');
+      const response = await fetch('/api/donor/dashboard', { cache: 'no-store' });
       const payload = await response.json();
       if (!response.ok || !payload.success) throw new Error(payload.message || 'Unable to load donor dashboard');
       setData(payload.data);
@@ -42,7 +42,11 @@ export default function DonorDashboardPage() {
     }
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+    const interval = setInterval(() => void load(), 15000);
+    return () => clearInterval(interval);
+  }, [load]);
 
   const saveAvailability = async (nextStatus: string) => {
     setSaving(true); setMessage(null);

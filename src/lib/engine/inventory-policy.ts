@@ -2,8 +2,30 @@ export interface CompatibleInventoryStock {
   bloodGroup: string;
   component: string;
   availableUnits: number;
+  reservedUnits?: number;
+  totalUnits?: number;
   status?: string;
   operationallyUnavailable?: boolean;
+}
+
+export function getAllocatableInventoryUnits(item: CompatibleInventoryStock | null | undefined) {
+  if (
+    !item ||
+    (item.status !== 'AVAILABLE' && item.status !== 'RESERVED') ||
+    item.operationallyUnavailable === true ||
+    !Number.isFinite(item.availableUnits) ||
+    item.availableUnits <= 0
+  ) {
+    return 0;
+  }
+
+  const unreservedUnits = typeof item.totalUnits === 'number' &&
+    Number.isFinite(item.totalUnits) &&
+    typeof item.reservedUnits === 'number' &&
+    Number.isFinite(item.reservedUnits)
+    ? Math.max(0, item.totalUnits - item.reservedUnits)
+    : item.availableUnits;
+  return Math.min(item.availableUnits, unreservedUnits);
 }
 
 export function getCompatibleAvailableUnits(
@@ -16,14 +38,11 @@ export function getCompatibleAvailableUnits(
     if (
       !compatible.has(item.bloodGroup) ||
       item.component !== component ||
-      item.status === 'UNAVAILABLE' ||
-      item.operationallyUnavailable === true ||
-      !Number.isFinite(item.availableUnits) ||
-      item.availableUnits <= 0
+      getAllocatableInventoryUnits(item) <= 0
     ) {
       return total;
     }
-    return total + item.availableUnits;
+    return total + getAllocatableInventoryUnits(item);
   }, 0);
 }
 
@@ -41,10 +60,7 @@ export function planCompatibleInventoryReservation<T extends CompatibleInventory
     .filter((item) =>
       groupOrder.has(item.bloodGroup) &&
       item.component === component &&
-      item.status !== 'UNAVAILABLE' &&
-      item.operationallyUnavailable !== true &&
-      Number.isFinite(item.availableUnits) &&
-      item.availableUnits > 0
+      getAllocatableInventoryUnits(item) > 0
     )
     .sort((left, right) =>
       (groupOrder.get(left.bloodGroup) ?? Number.MAX_SAFE_INTEGER) -
@@ -59,7 +75,7 @@ export function planCompatibleInventoryReservation<T extends CompatibleInventory
   let remaining = units;
   return orderedItems.flatMap((item) => {
     if (remaining <= 0) return [];
-    const allocation = Math.min(item.availableUnits, remaining);
+    const allocation = Math.min(getAllocatableInventoryUnits(item), remaining);
     remaining -= allocation;
     return [{ item, units: allocation }];
   });

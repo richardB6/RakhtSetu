@@ -7,12 +7,14 @@ import { EmergencyRequest } from '@/models/EmergencyRequest';
 import { Match } from '@/models/Match';
 import { Notification } from '@/models/Notification';
 import { User } from '@/models/User';
+import { backfillEligibleDonorMatchNotifications } from '@/lib/services/matching.service';
 
 export const GET = withAuth(async (req: NextRequest, context) => {
   try {
     await connectToDatabase();
     const donor = await Donor.findOne({ userId: context.user.userId }).lean();
     if (!donor) return NextResponse.json({ success: false, message: 'Donor profile not found' }, { status: 404 });
+    await backfillEligibleDonorMatchNotifications(500, undefined, context.user.userId);
 
     const donorPoint = {
       type: 'Point' as const,
