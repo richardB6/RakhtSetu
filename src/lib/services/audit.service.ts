@@ -1,5 +1,6 @@
 import { connectToDatabase } from '@/lib/db/mongodb';
 import { AuditLog } from '@/models/AuditLog';
+import type { ClientSession } from 'mongoose';
 
 export async function createAuditLog(data: {
   userId: string;
@@ -15,9 +16,12 @@ export async function createAuditLog(data: {
     ipAddress?: string;
     userAgent?: string;
   };
-}) {
+}, session?: ClientSession) {
   await connectToDatabase();
-  
+  if (session) {
+    const [log] = await AuditLog.create([data], { session });
+    return log;
+  }
   const log = await AuditLog.create(data);
   return log;
 }

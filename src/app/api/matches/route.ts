@@ -4,7 +4,13 @@ import { connectToDatabase } from '@/lib/db/mongodb';
 import { Match } from '@/models/Match';
 import { BloodBank } from '@/models/BloodBank';
 import { Donor } from '@/models/Donor';
-import { recoverStaleMatchingRequests } from '@/lib/services/matching.service';
+import { Inventory } from '@/models/Inventory';
+import {
+  escalateMatchIfInsufficientStock,
+  recoverStaleMatchingRequests,
+} from '@/lib/services/matching.service';
+import { getCompatibleDonorGroups, BloodGroup, ComponentType } from '@/lib/engine/compatibility';
+import { getCompatibleAvailableUnits } from '@/lib/engine/inventory-policy';
 
 /**
  * GET /api/matches
@@ -50,7 +56,7 @@ export const GET = withAuth(async (req, context) => {
 
     const [matches, total] = await Promise.all([
       Match.find(query)
-        .populate('emergencyRequestId', 'requestId bloodGroup component quantity severity status city requiredBy createdAt contactPerson contactPhone')
+        .populate('emergencyRequestId', 'requestId bloodGroup component quantity quantityFulfilled severity status city requiredBy createdAt contactPerson contactPhone')
         .populate('resourceUserId', 'name email')
         .sort({ createdAt: -1 })
         .skip(skip)
@@ -63,6 +69,50 @@ export const GET = withAuth(async (req, context) => {
     const enriched = await Promise.all(
       matches.map(async (match) => {
         let resourceName = 'Unknown';
+        let availableQuantity = match.availableQuantity;
+        let status = match.status;
+        let declineReason = match.declineReason;
+        if (match.resourceType === 'BLOOD_BANK') {
+          const emergency = match.emergencyRequestId;
+          if (
+            emergency &&
+            typeof emergency === 'object' &&
+            'bloodGroup' in emergency &&
+            'component' in emergency &&
+            typeof emergency.bloodGroup === 'string' &&
+            typeof emergency.component === 'string'
+          ) {
+            const compatibleGroups = getCompatibleDonorGroups(
+              emergency.bloodGroup as BloodGroup,
+              emergency.component as ComponentType
+            );
+            const inventory = await Inventory.find({
+              bloodBankId: match.resourceId,
+              bloodGroup: { $in: compatibleGroups },
+              component: emergency.component,
+              operationallyUnavailable: { $ne: true },
+              status: { $ne: 'UNAVAILABLE' },
+            }).select('bloodGroup component availableUnits status operationallyUnavailable').lean();
+            availableQuantity = getCompatibleAvailableUnits(
+              inventory,
+              compatibleGroups,
+              emergency.component
+            );
+          }
+          if (
+            context.user.role === 'BLOOD_BANK' &&
+            (match.status === 'PENDING' || match.status === 'NOTIFIED')
+          ) {
+            const declinedMatch = await escalateMatchIfInsufficientStock(
+              match._id.toString(),
+              context.user.userId
+            );
+            if (declinedMatch) {
+              status = 'DECLINED';
+              declineReason = declinedMatch.declineReason;
+            }
+          }
+        }
         try {
           if (match.resourceType === 'BLOOD_BANK') {
             const bb = await BloodBank.findById(match.resourceId).select('name city').lean();
@@ -74,7 +124,7 @@ export const GET = withAuth(async (req, context) => {
         } catch {
           // ignore
         }
-        return { ...match, resourceName };
+        return { ...match, status, declineReason, availableQuantity, resourceName };
       })
     );
 

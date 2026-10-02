@@ -16,7 +16,7 @@ export const POST = withAuth(async (req, context) => {
     return NextResponse.json({ success: true, data: result });
   } catch (error: any) {
     const message = error instanceof Error ? error.message : 'Unable to respond to match';
-    const status = /available|reservation|inventory|already responded/i.test(message) ? 409 : 500;
+    const status = /available|reservation|inventory|stock|insufficient|already responded/i.test(message) ? 409 : 500;
     return NextResponse.json({ success: false, message }, { status });
   }
 }, { roles: ['BLOOD_BANK', 'DONOR'] });

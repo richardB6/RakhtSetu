@@ -31,8 +31,9 @@ async function recordInventoryHistory(data: {
   emergencyRequestId?: string;
   matchId?: string;
   reason?: string;
-}) {
-  await InventoryHistory.create(data);
+}, session?: import('mongoose').ClientSession) {
+  if (session) await InventoryHistory.create([data], { session });
+  else await InventoryHistory.create(data);
 }
 
 export async function updateInventory(
@@ -102,11 +103,14 @@ export async function reserveUnits(
   component: ComponentType,
   units: number,
   actor?: { userId: string; userName: string; requestId?: string },
-  scope?: { emergencyRequestId: string; matchId: string }
+  scope?: { emergencyRequestId: string; matchId: string },
+  session?: import('mongoose').ClientSession
 ) {
   await connectToDatabase();
 
-  const item = await Inventory.findOne({ bloodBankId, bloodGroup, component });
+  const itemQuery = Inventory.findOne({ bloodBankId, bloodGroup, component });
+  if (session) itemQuery.session(session);
+  const item = await itemQuery;
   if (!item) throw new Error('Inventory item not found');
 
   const previous = { availableUnits: item.availableUnits, reservedUnits: item.reservedUnits, status: item.status };
@@ -117,12 +121,14 @@ export async function reserveUnits(
       bloodGroup,
       component,
       availableUnits: { $gte: units },
+      operationallyUnavailable: { $ne: true },
+      status: { $ne: 'UNAVAILABLE' },
     },
     {
       $inc: { availableUnits: -units, reservedUnits: units },
       $set: { lastUpdated: new Date() },
     },
-    { new: true }
+    session ? { new: true, session } : { new: true }
   );
 
   if (!updated) {
@@ -135,11 +141,12 @@ export async function reserveUnits(
       reason: 'Inventory changed before the conditional reservation update completed.',
       emergencyRequestId: scope?.emergencyRequestId,
       matchId: scope?.matchId,
-    });
+    }, session);
     throw new Error('Reservation failed because inventory changed before the update could be applied.');
   }
   updated.status = updated.availableUnits <= 0 ? 'UNAVAILABLE' : updated.reservedUnits > 0 ? 'RESERVED' : 'AVAILABLE';
-  await updated.save();
+  if (session) await updated.save({ session });
+  else await updated.save();
 
   await recordInventoryHistory({
     inventoryId: updated._id.toString(),
@@ -150,7 +157,7 @@ export async function reserveUnits(
     newState: inventoryState(updated),
     emergencyRequestId: scope?.emergencyRequestId,
     matchId: scope?.matchId,
-  });
+  }, session);
 
   if (actor) {
     await createAuditLog({
@@ -164,7 +171,7 @@ export async function reserveUnits(
       previousState: previous,
       newState: { availableUnits: updated.availableUnits, reservedUnits: updated.reservedUnits, status: updated.status },
       metadata: actor.requestId ? { userAgent: actor.requestId } : undefined,
-    });
+    }, session);
   }
 
   return updated;
@@ -176,11 +183,14 @@ export async function releaseReservation(
   component: ComponentType,
   units: number,
   actor?: { userId: string; userName: string; requestId?: string },
-  scope?: { emergencyRequestId?: string; matchId?: string; reason?: string }
+  scope?: { emergencyRequestId?: string; matchId?: string; reason?: string },
+  session?: import('mongoose').ClientSession
 ) {
   await connectToDatabase();
 
-  const item = await Inventory.findOne({ bloodBankId, bloodGroup, component });
+  const itemQuery = Inventory.findOne({ bloodBankId, bloodGroup, component });
+  if (session) itemQuery.session(session);
+  const item = await itemQuery;
   if (!item) throw new Error('Inventory item not found');
 
   const previous = { availableUnits: item.availableUnits, reservedUnits: item.reservedUnits, status: item.status };
@@ -193,14 +203,15 @@ export async function releaseReservation(
       reservedUnits: { $gte: units },
     },
     { $inc: { availableUnits: units, reservedUnits: -units }, $set: { lastUpdated: new Date() } },
-    { new: true }
+    session ? { new: true, session } : { new: true }
   );
 
   if (!updated) {
     throw new Error('Reservation release failed because inventory was no longer eligible.');
   }
   updated.status = updated.availableUnits <= 0 ? 'UNAVAILABLE' : updated.reservedUnits > 0 ? 'RESERVED' : 'AVAILABLE';
-  await updated.save();
+  if (session) await updated.save({ session });
+  else await updated.save();
 
   await recordInventoryHistory({
     inventoryId: updated._id.toString(),
@@ -212,7 +223,7 @@ export async function releaseReservation(
     emergencyRequestId: scope?.emergencyRequestId,
     matchId: scope?.matchId,
     reason: scope?.reason,
-  });
+  }, session);
 
   if (actor) {
     await createAuditLog({
@@ -226,7 +237,7 @@ export async function releaseReservation(
       previousState: previous,
       newState: { availableUnits: updated.availableUnits, reservedUnits: updated.reservedUnits, status: updated.status },
       metadata: actor.requestId ? { userAgent: actor.requestId } : undefined,
-    });
+    }, session);
   }
 
   return updated;

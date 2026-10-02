@@ -9,8 +9,13 @@ import { User } from '@/models/User';
 import { ACTIVE_STATUSES, getCompatibleDonorGroups, getCompatibilityLevel, ComponentType, BloodGroup } from '@/lib/engine/compatibility';
 import { rankResources } from '@/lib/engine/matching-policy';
 import { createMatchNotification, createNotification } from '@/lib/services/notification.service';
-import { reserveAcceptedMatch } from '@/lib/services/reservation.service';
+import {
+  InsufficientStockError,
+  notifyReservationCreated,
+  reserveAcceptedMatch,
+} from '@/lib/services/reservation.service';
 import { Reservation } from '@/models/Reservation';
+import { getCompatibleAvailableUnits } from '@/lib/engine/inventory-policy';
 export { rankResources } from '@/lib/engine/matching-policy';
 
 const getAuditLogModel = () => mongoose.models.AuditLog || mongoose.model('AuditLog', new mongoose.Schema({}, { strict: false }));
@@ -276,56 +281,58 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
       bloodBankId: bb._id,
       bloodGroup: { $in: compatibleGroups },
       component: request.component,
-      availableUnits: { $gte: outstandingQuantity },
+      availableUnits: { $gt: 0 },
       operationallyUnavailable: { $ne: true },
       status: { $ne: 'UNAVAILABLE' },
+    }).lean();
+    const availableQuantity = getCompatibleAvailableUnits(
+      inventoryItems,
+      compatibleGroups,
+      request.component
+    );
+    if (availableQuantity < outstandingQuantity) continue;
+
+    const user = await User.findOne({
+      _id: bb.userId,
+      isActive: true,
+      verificationStatus: 'VERIFIED',
+    }).lean();
+    if (!user) continue;
+
+    const responseRate = bb.totalResponseCount > 0 ? bb.acceptedResponseCount / bb.totalResponseCount : -1;
+    const preferredAvailableGroup = compatibleGroups.find((group) =>
+      inventoryItems.some((inventory) => inventory.bloodGroup === group)
+    );
+    if (!preferredAvailableGroup) continue;
+
+    const matchResult = calculateMatchScore({
+      recipientBloodGroup: request.bloodGroup as BloodGroup,
+      donorBloodGroup: preferredAvailableGroup,
+      component: request.component as ComponentType,
+      distanceKm: bbDistanceKm,
+      availableQuantity,
+      requestedQuantity: outstandingQuantity,
+      isVerified: user.verificationStatus === 'VERIFIED',
+      responseRate,
+      severity: request.severity,
+      requiredBy: request.requiredBy,
+      asOf: request.matchingStartedAt,
     });
 
-    for (const inv of inventoryItems) {
-      const user = await User.findOne({
-        _id: bb.userId,
-        isActive: true,
-        verificationStatus: 'VERIFIED',
-      }).lean();
-      if (!user) continue;
-
-      const responseRate = bb.totalResponseCount > 0 ? bb.acceptedResponseCount / bb.totalResponseCount : -1;
-      
-      const matchResult = calculateMatchScore({
-        recipientBloodGroup: request.bloodGroup as BloodGroup,
-        donorBloodGroup: inv.bloodGroup as BloodGroup,
-        component: request.component as ComponentType,
-        distanceKm: bbDistanceKm,
-        availableQuantity: inv.availableUnits,
-        requestedQuantity: outstandingQuantity,
-        isVerified: user.verificationStatus === 'VERIFIED',
-        responseRate,
-        severity: request.severity,
-        requiredBy: request.requiredBy,
-        asOf: request.matchingStartedAt,
-      });
-
-      const candidate = {
-        emergencyRequestId: request._id,
-        resourceType: 'BLOOD_BANK',
-        resourceId: bb._id,
-        resourceUserId: bb.userId,
-        score: matchResult.score,
-        factors: matchResult.factors,
-        compatibilityType: matchResult.compatibilityType,
-        distanceKm: bbDistanceKm,
-        availableQuantity: inv.availableUnits,
-        isVerified: user.verificationStatus === 'VERIFIED',
-        reasons: matchResult.reasons,
-        status: 'PENDING',
-      };
-      const bankId = bb._id.toString();
-      const previous = bloodBankMatches.get(bankId);
-      if (!previous || candidate.score > previous.score ||
-          (candidate.score === previous.score && candidate.availableQuantity > previous.availableQuantity)) {
-        bloodBankMatches.set(bankId, candidate);
-      }
-    }
+    bloodBankMatches.set(bb._id.toString(), {
+      emergencyRequestId: request._id,
+      resourceType: 'BLOOD_BANK',
+      resourceId: bb._id,
+      resourceUserId: bb.userId,
+      score: matchResult.score,
+      factors: matchResult.factors,
+      compatibilityType: matchResult.compatibilityType,
+      distanceKm: bbDistanceKm,
+      availableQuantity,
+      isVerified: user.verificationStatus === 'VERIFIED',
+      reasons: matchResult.reasons,
+      status: 'PENDING',
+    });
   }
   allMatches.push(...bloodBankMatches.values());
 
@@ -422,7 +429,7 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
   request.status = createdMatches.length > 0 ? 'RESOURCES_NOTIFIED' : 'ESCALATED';
   request.matchingMessage = createdMatches.length > 0
     ? undefined
-    : `No eligible blood bank or donor was found within ${request.searchRadiusKm} km. Confirm the location, compatible component capability, and verified resource availability, or expand the search radius.`;
+    : `No eligible resource with sufficient compatible stock was found within ${request.searchRadiusKm} km. The emergency request remains open; expand the search radius or try again when stock changes.`;
   request.responseDeadline = createdMatches.length > 0
     ? new Date(Date.now() + request.responseTimeoutMinutes * 60 * 1000)
     : undefined;
@@ -550,6 +557,67 @@ export async function recoverStaleMatchingRequests(limit = 5) {
   }
 }
 
+export async function escalateMatchIfInsufficientStock(matchId: string, userId: string) {
+  await connectToDatabase();
+  const match = await Match.findOne({
+    _id: matchId,
+    resourceType: 'BLOOD_BANK',
+    resourceUserId: userId,
+    status: { $in: ['PENDING', 'NOTIFIED'] },
+  });
+  if (!match) return null;
+
+  const request = await EmergencyRequest.findById(match.emergencyRequestId);
+  if (!request) throw new Error('Associated emergency request not found');
+
+  const bloodBank = await BloodBank.findOne({
+    _id: match.resourceId,
+    userId: match.resourceUserId,
+    isOpen: true,
+    operationalStatus: { $nin: ['UNAVAILABLE', 'CLOSED'] },
+    componentCapabilities: request.component,
+  }).select('_id');
+  const compatibleGroups = getCompatibleDonorGroups(
+    request.bloodGroup as BloodGroup,
+    request.component as ComponentType
+  );
+  const inventory = bloodBank
+    ? await Inventory.find({
+      bloodBankId: bloodBank._id,
+      bloodGroup: { $in: compatibleGroups },
+      component: request.component,
+      operationallyUnavailable: { $ne: true },
+      status: { $ne: 'UNAVAILABLE' },
+    }).select('bloodGroup component availableUnits status operationallyUnavailable').lean()
+    : [];
+  const availableQuantity = getCompatibleAvailableUnits(
+    inventory,
+    compatibleGroups,
+    request.component
+  );
+  const requiredQuantity = Math.max(1, request.quantity - request.quantityFulfilled);
+  if (bloodBank && availableQuantity >= requiredQuantity) return null;
+
+  const declinedMatch = await Match.findOneAndUpdate(
+    {
+      _id: match._id,
+      resourceUserId: userId,
+      status: { $in: ['PENDING', 'NOTIFIED'] },
+    },
+    {
+      $set: {
+        status: 'DECLINED',
+        respondedAt: new Date(),
+        declineReason: `Cannot accept — insufficient stock (${availableQuantity} of ${requiredQuantity} compatible units available)`,
+      },
+    },
+    { new: true }
+  );
+  if (!declinedMatch) return null;
+  await escalateAfterDecline(declinedMatch, request, userId);
+  return declinedMatch;
+}
+
 export async function respondToMatch(matchId: string, userId: string, accept: boolean, declineReason?: string) {
   await connectToDatabase();
   
@@ -575,23 +643,80 @@ export async function respondToMatch(matchId: string, userId: string, accept: bo
   const AuditLogModel = getAuditLogModel();
 
   if (accept) {
-    match.status = 'ACCEPTED';
-    match.respondedAt = new Date();
-    await match.save();
+    if (match.resourceType === 'BLOOD_BANK') {
+      const session = await mongoose.startSession();
+      let reservation: InstanceType<typeof Reservation> | undefined;
+      try {
+        await session.withTransaction(async () => {
+          const claimedMatch = await Match.findOneAndUpdate(
+            {
+              _id: match._id,
+              resourceUserId: userId,
+              status: { $in: ['PENDING', 'NOTIFIED'] },
+            },
+            { $set: { status: 'ACCEPTED', respondedAt: new Date() } },
+            { new: true, session }
+          );
+          if (!claimedMatch) throw new Error('Match already responded to');
 
-    await reserveAcceptedMatch(match._id.toString(), { userId, userName: 'Resource User' });
+          const currentRequest = await EmergencyRequest.findById(request._id).session(session);
+          if (!currentRequest) throw new Error('Associated emergency request not found');
 
-    request.responseCount += 1;
-    if (request.responseCount === 1) {
-      request.firstResponseAt = new Date();
+          reservation = await reserveAcceptedMatch(
+            claimedMatch._id.toString(),
+            { userId, userName: 'Resource User' },
+            session
+          );
+          currentRequest.responseCount += 1;
+          if (currentRequest.responseCount === 1) currentRequest.firstResponseAt = new Date();
+          if (currentRequest.status === 'RESOURCES_NOTIFIED' || currentRequest.status === 'ESCALATED') {
+            currentRequest.status = 'RESPONSES_RECEIVED';
+          }
+          await currentRequest.save({ session });
+          match.status = 'RESERVED';
+          match.respondedAt = claimedMatch.respondedAt;
+        });
+      } catch (error) {
+        if (error instanceof InsufficientStockError) {
+          const declinedMatch = await Match.findOneAndUpdate(
+            {
+              _id: match._id,
+              resourceUserId: userId,
+              status: { $in: ['PENDING', 'NOTIFIED'] },
+            },
+            {
+              $set: {
+                status: 'DECLINED',
+                respondedAt: new Date(),
+                declineReason: error.message,
+              },
+            },
+            { new: true }
+          );
+          if (declinedMatch) {
+            const currentRequest = await EmergencyRequest.findById(request._id);
+            if (currentRequest) await escalateAfterDecline(declinedMatch, currentRequest, userId);
+          }
+        }
+        throw error;
+      } finally {
+        await session.endSession();
+      }
+      if (!reservation) throw new Error('Reservation transaction did not complete');
+      await notifyReservationCreated(reservation, { userId, userName: 'Resource User' });
+    } else {
+      match.status = 'ACCEPTED';
+      match.respondedAt = new Date();
+      await match.save();
+      await reserveAcceptedMatch(match._id.toString(), { userId, userName: 'Resource User' });
+
+      request.responseCount += 1;
+      if (request.responseCount === 1) request.firstResponseAt = new Date();
+      if (request.status === 'RESOURCES_NOTIFIED' || request.status === 'ESCALATED') {
+        request.status = 'RESPONSES_RECEIVED';
+      }
+      await request.save();
     }
-    
-    // Move to RESPONSES_RECEIVED if it's currently in RESOURCES_NOTIFIED
-    if (request.status === 'RESOURCES_NOTIFIED' || request.status === 'ESCALATED') {
-      request.status = 'RESPONSES_RECEIVED';
-    }
-    
-    await request.save();
 
     await AuditLogModel.create({
       userId,
@@ -626,7 +751,6 @@ export async function respondToMatch(matchId: string, userId: string, accept: bo
     await escalateAfterDecline(match, request, userId);
   }
 
-  await match.save();
   return match;
 }
 
@@ -639,30 +763,80 @@ async function escalateAfterDecline(
   request: InstanceType<typeof EmergencyRequest>,
   systemUserId: string
 ) {
-  // Find the next PENDING match (not yet notified) for this request, ranked higher than current
-  const nextMatch = await Match.findOne({
-    emergencyRequestId: request._id,
-    status: 'PENDING',
-    _id: { $ne: declinedMatch._id },
-  }).sort({ rank: 1, _id: 1 });
-
   const AuditLogModel = getAuditLogModel();
 
-  if (nextMatch) {
-    // Promote the next match
-    nextMatch.status = 'NOTIFIED';
-    nextMatch.notifiedAt = new Date();
-    await nextMatch.save();
+  while (true) {
+    const nextMatch = await Match.findOne({
+      emergencyRequestId: request._id,
+      status: 'PENDING',
+      _id: { $ne: declinedMatch._id },
+    }).sort({ rank: 1, _id: 1 });
+    if (!nextMatch) break;
 
-    // Notify the next resource
-    await createNotification({
-      userId: nextMatch.resourceUserId.toString(),
-      type: 'NEW_MATCH',
+    if (nextMatch.resourceType === 'BLOOD_BANK') {
+      const bloodBank = await BloodBank.findOne({
+        _id: nextMatch.resourceId,
+        userId: nextMatch.resourceUserId,
+        isOpen: true,
+        operationalStatus: { $nin: ['UNAVAILABLE', 'CLOSED'] },
+        componentCapabilities: request.component,
+      }).lean();
+      const user = bloodBank
+        ? await User.findOne({
+          _id: bloodBank.userId,
+          isActive: true,
+          verificationStatus: 'VERIFIED',
+        }).select('_id').lean()
+        : null;
+      const compatibleGroups = getCompatibleDonorGroups(
+        request.bloodGroup as BloodGroup,
+        request.component as ComponentType
+      );
+      const inventory = bloodBank && user
+        ? await Inventory.find({
+          bloodBankId: bloodBank._id,
+          bloodGroup: { $in: compatibleGroups },
+          component: request.component,
+          operationallyUnavailable: { $ne: true },
+          status: { $ne: 'UNAVAILABLE' },
+        }).select('bloodGroup component availableUnits status operationallyUnavailable').lean()
+        : [];
+      const availableQuantity = getCompatibleAvailableUnits(
+        inventory,
+        compatibleGroups,
+        request.component
+      );
+      const requiredQuantity = Math.max(1, request.quantity - request.quantityFulfilled);
+      if (!bloodBank || !user || availableQuantity < requiredQuantity) {
+        await Match.updateOne(
+          { _id: nextMatch._id, status: 'PENDING' },
+          {
+            $set: {
+              status: 'DECLINED',
+              respondedAt: new Date(),
+              declineReason: !bloodBank || !user
+                ? 'Blood bank is no longer eligible'
+                : `Insufficient stock (${availableQuantity} of ${requiredQuantity} compatible units available)`,
+            },
+          }
+        );
+        continue;
+      }
+    }
+
+    const promotedMatch = await Match.findOneAndUpdate(
+      { _id: nextMatch._id, status: 'PENDING' },
+      { $set: { status: 'NOTIFIED', notifiedAt: new Date() } },
+      { new: true }
+    );
+    if (!promotedMatch) continue;
+
+    await createMatchNotification({
+      userId: promotedMatch.resourceUserId.toString(),
       title: 'Emergency Blood Request — Action Required',
-      message: `An emergency request for ${request.quantity} units of ${request.bloodGroup} ${request.component} requires your response. Previous resource declined. Please respond urgently. Match ID: ${nextMatch._id}`,
+      message: `An emergency request for ${request.quantity} units of ${request.bloodGroup} ${request.component} requires your response. Previous resource declined or lacked sufficient stock. Please respond urgently. Match ID: ${promotedMatch._id}`,
       severity: request.severity,
-      referenceType: 'MATCH',
-      referenceId: nextMatch._id.toString(),
+      referenceId: promotedMatch._id.toString(),
     });
 
     await AuditLogModel.create({
@@ -671,44 +845,45 @@ async function escalateAfterDecline(
       userName: 'Escalation Engine',
       action: 'ESCALATE_TO_NEXT_RESOURCE',
       entityType: 'MATCH',
-      entityId: nextMatch._id,
-      description: `Escalated emergency ${request.requestId} to next resource after decline. New match: ${nextMatch._id}`,
+      entityId: promotedMatch._id,
+      description: `Escalated emergency ${request.requestId} to next resource after decline or insufficient stock. New match: ${promotedMatch._id}`,
       createdAt: new Date(),
     });
-  } else {
-    // No more pending matches — check if there are any accepted matches already
-    const acceptedMatch = await Match.exists({
-      emergencyRequestId: request._id,
-      status: { $in: ['ACCEPTED', 'RESERVED'] },
-    });
-
-    if (!acceptedMatch) {
-      // No accepted matches and no pending ones — mark as escalated
-      request.status = 'ESCALATED';
-      request.escalationLevel = (request.escalationLevel || 0) + 1;
-      await request.save();
-
-      // Notify the hospital that no resources are available
-      await createNotification({
-        userId: request.createdBy.toString(),
-        type: 'ESCALATION',
-        title: 'No Blood Resources Available — Action Required',
-        message: `All matched resources for emergency request ${request.requestId} (${request.bloodGroup}, ${request.quantity} units) have declined. Please expand search radius or contact blood banks directly.`,
-        severity: 'CRITICAL',
-        referenceType: 'EMERGENCY_REQUEST',
-        referenceId: request._id.toString(),
-      });
-
-      await AuditLogModel.create({
-        userId: systemUserId,
-        userRole: 'SYSTEM',
-        userName: 'Escalation Engine',
-        action: 'NO_RESOURCES_AVAILABLE',
-        entityType: 'EMERGENCY_REQUEST',
-        entityId: request._id,
-        description: `All resources declined for emergency ${request.requestId}. Request escalated to level ${request.escalationLevel}.`,
-        createdAt: new Date(),
-      });
-    }
+    return;
   }
+
+  const acceptedMatch = await Match.exists({
+    emergencyRequestId: request._id,
+    status: { $in: ['ACCEPTED', 'RESERVED'] },
+  });
+  if (acceptedMatch) return;
+
+  const message = 'No suitable compatible stock is currently available. The emergency request remains open and escalated.';
+  const escalatedRequest = await EmergencyRequest.findOneAndUpdate(
+    { _id: request._id, matchingMessage: { $ne: message } },
+    { $set: { status: 'ESCALATED', matchingMessage: message }, $inc: { escalationLevel: 1 } },
+    { new: true }
+  );
+  if (!escalatedRequest) return;
+
+  await createNotification({
+    userId: request.createdBy.toString(),
+    type: 'ESCALATION',
+    title: 'No Suitable Blood Stock Available — Action Required',
+    message: `No eligible resource currently has sufficient compatible stock for emergency request ${request.requestId} (${request.bloodGroup}, ${request.quantity} units). The request remains open for escalation.`,
+    severity: 'CRITICAL',
+    referenceType: 'EMERGENCY_REQUEST',
+    referenceId: request._id.toString(),
+  });
+
+  await AuditLogModel.create({
+    userId: systemUserId,
+    userRole: 'SYSTEM',
+    userName: 'Escalation Engine',
+    action: 'NO_RESOURCES_AVAILABLE',
+    entityType: 'EMERGENCY_REQUEST',
+    entityId: request._id,
+    description: `No suitable compatible stock is currently available for emergency ${request.requestId}. Request remains escalated.`,
+    createdAt: new Date(),
+  });
 }

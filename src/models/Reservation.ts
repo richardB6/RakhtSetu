@@ -7,6 +7,7 @@ export interface IReservation extends Document {
   emergencyRequestId: mongoose.Types.ObjectId;
   matchId: mongoose.Types.ObjectId;
   inventoryId?: mongoose.Types.ObjectId;
+  inventoryAllocations?: Array<{ inventoryId: mongoose.Types.ObjectId; units: number }>;
   bloodBankId?: mongoose.Types.ObjectId;
   donorId?: mongoose.Types.ObjectId;
   donorAvailabilityStatusBeforeReservation?: DonorAvailabilityStatus;
@@ -25,6 +26,10 @@ const ReservationSchema = new Schema<IReservation>(
     emergencyRequestId: { type: Schema.Types.ObjectId, ref: 'EmergencyRequest', required: true },
     matchId: { type: Schema.Types.ObjectId, ref: 'Match', required: true },
     inventoryId: { type: Schema.Types.ObjectId, ref: 'Inventory' },
+    inventoryAllocations: [{
+      inventoryId: { type: Schema.Types.ObjectId, ref: 'Inventory', required: true },
+      units: { type: Number, required: true, min: 1 },
+    }],
     bloodBankId: { type: Schema.Types.ObjectId, ref: 'BloodBank' },
     donorId: { type: Schema.Types.ObjectId, ref: 'Donor' },
     donorAvailabilityStatusBeforeReservation: {

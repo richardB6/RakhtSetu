@@ -26,6 +26,7 @@ interface EmergencyRef {
   bloodGroup: string;
   component: string;
   quantity: number;
+  quantityFulfilled?: number;
   severity: 'CRITICAL' | 'HIGH' | 'NORMAL';
   status: string;
   city: string;
@@ -299,7 +300,21 @@ export default function BloodBankRequestsPage() {
                     <span>·</span>
                     <span>Compatibility: <strong>{match.compatibilityType?.replace(/_/g, ' ')}</strong></span>
                     <span>·</span>
-                    <span>Your available stock: <strong>{match.availableQuantity} units</strong></span>
+                    {(() => {
+                      const needed = emergency
+                        ? Math.max(1, emergency.quantity - (emergency.quantityFulfilled || 0))
+                        : 1;
+                      const insufficient = match.availableQuantity < needed;
+                      return (
+                        <span className={insufficient ? 'text-destructive' : ''}>
+                          {match.availableQuantity <= 0
+                            ? 'No stock available'
+                            : insufficient
+                              ? `Insufficient stock — ${match.availableQuantity} of ${needed} units available`
+                              : <>Your available stock: <strong>{match.availableQuantity} units</strong></>}
+                        </span>
+                      );
+                    })()}
                   </div>
 
                   {/* Decline reason input */}
@@ -343,12 +358,17 @@ export default function BloodBankRequestsPage() {
                             <Button
                               size="sm"
                               className="bg-primary text-primary-foreground"
-                              disabled={isActing}
+                              disabled={isActing || (match.resourceType === 'BLOOD_BANK' && !!emergency &&
+                                match.availableQuantity < Math.max(1, emergency.quantity - (emergency.quantityFulfilled || 0)))}
                               onClick={() => respond(match._id, true)}
                             >
                               <CheckCircle2 className="w-4 h-4 mr-1" />
                               {isActing ? 'Processing...' : 'Accept Request'}
                             </Button>
+                            {match.resourceType === 'BLOOD_BANK' && emergency &&
+                              match.availableQuantity < Math.max(1, emergency.quantity - (emergency.quantityFulfilled || 0)) && (
+                                <span className="text-xs text-destructive">Cannot accept — insufficient stock</span>
+                              )}
                             <Button
                               size="sm"
                               variant="outline"
