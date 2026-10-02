@@ -123,7 +123,7 @@ export default function AnalyticsPage() {
       </div>
 
       {/* Stats Row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card className="p-4">
           <div className="flex items-center gap-2 mb-2">
             <div className="p-1.5 rounded-md bg-destructive/10">
@@ -164,14 +164,6 @@ export default function AnalyticsPage() {
           </div>
           <p className="text-2xl font-bold">{stats?.totalFulfilled || 0}</p>
         </Card>
-        {[
-          ['Median response', stats?.medianResponseTimeMinutes],
-          ['Matching time', stats?.averageMatchingTimeMinutes],
-          ['Fulfillment time', stats?.averageFulfillmentTimeMinutes],
-          ['Escalation rate', stats?.escalationRate],
-          ['Resource response', stats?.resourceResponseRate],
-          ['Resource acceptance', stats?.resourceAcceptanceRate],
-        ].map(([label, value]) => <Card key={String(label)} className="p-4"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-3 text-xl font-bold">{value === null || value === undefined ? 'Insufficient data' : String(label).toLowerCase().includes('rate') || label === 'Escalation rate' ? `${Number(value).toFixed(1)}%` : `${Number(value).toFixed(1)}m`}</p></Card>)}
       </div>
 
       {/* Charts */}

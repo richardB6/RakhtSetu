@@ -6,6 +6,8 @@ import { Hospital } from '@/models/Hospital';
 import { connectToDatabase } from '@/lib/db/mongodb';
 import { runMatchingEngine } from '@/lib/services/matching.service';
 import { EmergencyRequest } from '@/models/EmergencyRequest';
+import { Match } from '@/models/Match';
+import { BloodBank } from '@/models/BloodBank';
 
 export const GET = withAuth(async (req, context) => {
   try {
@@ -33,6 +35,36 @@ export const GET = withAuth(async (req, context) => {
     }
 
     const result = await getEmergencyRequests(filters);
+    if (context.user.role === 'HOSPITAL' && searchParams.get('includeMatches') === 'true') {
+      const requestIds = result.data.map((request) => request._id);
+      const acceptedMatches = await Match.find({
+        emergencyRequestId: { $in: requestIds },
+        resourceType: 'BLOOD_BANK',
+        status: { $in: ['ACCEPTED', 'RESERVED', 'FULFILLED'] },
+      }).select('emergencyRequestId resourceId status').lean();
+      const bloodBankIds = acceptedMatches.map((match) => match.resourceId);
+      const bloodBanks = await BloodBank.find({ _id: { $in: bloodBankIds } }).select('name').lean();
+      const bloodBankNames = new Map(bloodBanks.map((bloodBank) => [bloodBank._id.toString(), bloodBank.name]));
+      const matchedByRequest = new Map<string, Array<{ name: string; status: string }>>();
+
+      for (const match of acceptedMatches) {
+        const name = bloodBankNames.get(match.resourceId.toString());
+        if (!name) continue;
+        const key = match.emergencyRequestId.toString();
+        const matches = matchedByRequest.get(key) || [];
+        matches.push({ name, status: match.status });
+        matchedByRequest.set(key, matches);
+      }
+
+      return NextResponse.json({
+        success: true,
+        ...result,
+        data: result.data.map((request) => ({
+          ...request,
+          matchedBloodBanks: matchedByRequest.get(request._id.toString()) || [],
+        })),
+      });
+    }
     return NextResponse.json({ success: true, ...result });
   } catch (error: any) {
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });

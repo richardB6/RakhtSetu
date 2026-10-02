@@ -21,6 +21,12 @@ export const PATCH = withAuth(async (req, context) => {
     const id = Array.isArray(context.params.id) ? context.params.id[0] : context.params.id;
     const body = await req.json();
     const validatedData = updateEmergencyStatusSchema.parse(body);
+    if (validatedData.status === 'FULFILLED') {
+      return NextResponse.json(
+        { success: false, message: 'Confirm blood receipt from the Supply Tracker.' },
+        { status: 409 }
+      );
+    }
     const existing = await getEmergencyById(id);
     if (context.user.role === 'HOSPITAL' && existing.createdBy.toString() !== context.user.userId) {
       return NextResponse.json({ success: false, message: 'You do not have access to this request.' }, { status: 403 });

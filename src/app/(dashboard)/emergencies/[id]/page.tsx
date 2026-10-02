@@ -251,11 +251,6 @@ export default function EmergencyDetailPage() {
                     Cancel Request
                   </Button>
                 )}
-                {(user?.role === 'HOSPITAL' || user?.role === 'ADMIN') && ['RESOURCE_SELECTED', 'RESERVED', 'PROCESSING', 'IN_TRANSIT'].includes(emergency.status) && (
-                  <Button onClick={() => updateStatus('FULFILLED')} variant="outline" className="w-full text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10 border-emerald-500/20">
-                    Mark Fulfilled
-                  </Button>
-                )}
               </div>
             </CardFooter>
           </Card>

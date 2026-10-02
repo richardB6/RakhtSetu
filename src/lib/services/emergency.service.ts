@@ -86,7 +86,11 @@ export async function getEmergencyRequests(filters: {
     query.status = Array.isArray(filters.status) ? { $in: filters.status } : filters.status;
   }
   if (filters.severity) query.severity = filters.severity;
-  if (filters.hospitalId) query.hospitalId = filters.hospitalId;
+  if (filters.hospitalId) {
+    query.hospitalId = mongoose.Types.ObjectId.isValid(filters.hospitalId)
+      ? new mongoose.Types.ObjectId(filters.hospitalId)
+      : filters.hospitalId;
+  }
   if (filters.bloodGroup) query.bloodGroup = filters.bloodGroup;
   if (filters.component) query.component = filters.component;
   if (filters.search) {

@@ -13,9 +13,9 @@ export async function deliverInAppNotification(data: {
   severity: NotificationSeverity;
   referenceType?: string;
   referenceId?: string;
-}) {
+}, session?: mongoose.ClientSession) {
   const priority = { CRITICAL: 100, HIGH: 75, NORMAL: 50, INFO: 25 }[data.severity];
-  return Notification.create({
+  const notification = new Notification({
     ...data,
     priority,
     channel: 'IN_APP',
@@ -23,6 +23,9 @@ export async function deliverInAppNotification(data: {
     deliveryNote: 'Delivered to the internal notification inbox',
     isRead: false,
   });
+  if (session) await notification.save({ session });
+  else await notification.save();
+  return notification;
 }
 
 export async function createNotification(data: {
@@ -33,10 +36,10 @@ export async function createNotification(data: {
   severity: NotificationSeverity;
   referenceType?: string;
   referenceId?: string;
-}) {
+}, session?: mongoose.ClientSession) {
   await connectToDatabase();
 
-  return deliverInAppNotification(data);
+  return deliverInAppNotification(data, session);
 }
 
 export async function getNotifications(userId: string, filters?: {

@@ -39,23 +39,38 @@ interface ActiveReservation {
   units: number;
 }
 
+interface TrackedEmergency {
+  _id: string;
+  bloodGroup: BloodGroup;
+  component: ComponentType;
+  quantity: number;
+  matchCount: number;
+  status: string;
+  matchedBloodBanks: Array<{ name: string; status: string }>;
+}
+
 // ─── Hospital supply tracker ─────────────────────────────────────────────────
 
 function HospitalInventoryView() {
-  const [emergencies, setEmergencies] = useState<any[]>([]);
+  const [emergencies, setEmergencies] = useState<TrackedEmergency[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchEmergencies = async () => {
       try {
-        const res = await fetch('/api/emergencies');
+        const res = await fetch('/api/emergencies?limit=100&includeMatches=true');
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || 'Failed to fetch emergencies');
 
-        const activeStatuses = ['CREATED', 'MATCHING', 'RESOURCES_NOTIFIED', 'RESPONSES_RECEIVED', 'ESCALATED'];
-        const filtered = (data.data || []).filter((e: any) =>
-          activeStatuses.includes(e.status)
+        const trackedStatuses = [
+          'CREATED', 'MATCHING', 'RESOURCES_NOTIFIED', 'RESPONSES_RECEIVED',
+          'RESOURCE_SELECTED', 'RESERVED', 'PROCESSING', 'IN_TRANSIT',
+          'ESCALATED', 'FULFILLED',
+        ];
+        const filtered = (data.data || []).filter((emergency: TrackedEmergency) =>
+          trackedStatuses.includes(emergency.status)
         );
         setEmergencies(filtered);
       } catch (err) {
@@ -64,8 +79,29 @@ function HospitalInventoryView() {
         setLoading(false);
       }
     };
-    fetchEmergencies();
+    void fetchEmergencies();
   }, []);
+
+  const confirmReceipt = async (emergencyId: string) => {
+    setConfirmingId(emergencyId);
+    setError(null);
+    try {
+      const res = await fetch(`/api/emergencies/${emergencyId}/receipt`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to confirm blood receipt');
+      setEmergencies((current) => current.map((emergency) => emergency._id === emergencyId
+        ? {
+            ...emergency,
+            status: 'FULFILLED',
+            matchedBloodBanks: emergency.matchedBloodBanks.map((bloodBank) => ({ ...bloodBank, status: 'FULFILLED' })),
+          }
+        : emergency));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to confirm blood receipt');
+    } finally {
+      setConfirmingId(null);
+    }
+  };
 
   if (loading) {
     return (
@@ -101,13 +137,15 @@ function HospitalInventoryView() {
                 <th className="px-4 py-3 font-medium">Component</th>
                 <th className="px-4 py-3 font-medium">Units Requested</th>
                 <th className="px-4 py-3 font-medium">Matches Found</th>
+                <th className="px-4 py-3 font-medium">Matched Blood Bank</th>
                 <th className="px-4 py-3 font-medium">Status</th>
+                <th className="px-4 py-3 font-medium">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {emergencies.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                     No active blood supply tracking found.
                   </td>
                 </tr>
@@ -119,9 +157,24 @@ function HospitalInventoryView() {
                     <td className="px-4 py-3">{em.quantity}</td>
                     <td className="px-4 py-3">{em.matchCount || 0}</td>
                     <td className="px-4 py-3">
+                      {em.matchedBloodBanks.length ? em.matchedBloodBanks.map((bloodBank) => bloodBank.name).join(', ') : '—'}
+                    </td>
+                    <td className="px-4 py-3">
                       <Badge variant="outline" className="bg-accent text-accent-foreground border-border">
-                        {em.status.replace(/_/g, ' ')}
+                        {em.status === 'FULFILLED' ? 'Received' : em.matchedBloodBanks.length ? 'Accepted' : em.status.replace(/_/g, ' ')}
                       </Badge>
+                    </td>
+                    <td className="px-4 py-3">
+                      {em.status !== 'FULFILLED' && em.matchedBloodBanks.some((bloodBank) => bloodBank.status !== 'FULFILLED') && (
+                        <Button
+                          size="sm"
+                          disabled={confirmingId === em._id}
+                          onClick={() => void confirmReceipt(em._id)}
+                        >
+                          {confirmingId === em._id && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                          Mark as Received
+                        </Button>
+                      )}
                     </td>
                   </tr>
                 ))

@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { connectToDatabase } from '@/lib/db/mongodb';
 import { EmergencyRequest } from '@/models/EmergencyRequest';
 import { Match } from '@/models/Match';
@@ -197,13 +198,18 @@ export async function releaseMatchReservation(
 
 export async function fulfillRequestReservations(
   emergencyRequestId: string,
-  actor: { userId: string; userName: string }
+  actor: { userId: string; userName: string },
+  session?: mongoose.ClientSession
 ) {
   await connectToDatabase();
-  const reservations = await Reservation.find({ emergencyRequestId, status: 'ACTIVE' });
+  const reservationsQuery = Reservation.find({ emergencyRequestId, status: 'ACTIVE' });
+  if (session) reservationsQuery.session(session);
+  const reservations = await reservationsQuery;
   for (const reservation of reservations) {
     if (reservation.inventoryId) {
-      const inventory = await Inventory.findById(reservation.inventoryId);
+      const inventoryQuery = Inventory.findById(reservation.inventoryId);
+      if (session) inventoryQuery.session(session);
+      const inventory = await inventoryQuery;
       if (inventory) {
         const previous = {
           availableUnits: inventory.availableUnits,
@@ -225,14 +231,14 @@ export async function fulfillRequestReservations(
                   : 'AVAILABLE',
             },
           },
-          { new: true }
+          session ? { new: true, session } : { new: true }
         );
         if (!updated) throw new Error('Fulfillment could not consume the reserved inventory');
-        await InventoryHistory.create({
+        const history = {
           inventoryId: updated._id,
           bloodBankId: reservation.bloodBankId,
           actorId: actor.userId,
-          action: 'INVENTORY_FULFILLED',
+          action: 'INVENTORY_FULFILLED' as const,
           previousState: previous,
           newState: {
             availableUnits: updated.availableUnits,
@@ -244,14 +250,21 @@ export async function fulfillRequestReservations(
           emergencyRequestId,
           matchId: reservation.matchId,
           reason: 'FULFILLED',
-        });
+        };
+        if (session) await InventoryHistory.create([history], { session });
+        else await InventoryHistory.create(history);
       }
     }
     reservation.status = 'FULFILLED';
     reservation.releaseReason = 'FULFILLED';
     reservation.releasedAt = new Date();
-    await reservation.save();
-    await Match.findByIdAndUpdate(reservation.matchId, { $set: { status: 'FULFILLED' } });
+    if (session) await reservation.save({ session });
+    else await reservation.save();
+    await Match.findByIdAndUpdate(
+      reservation.matchId,
+      { $set: { status: 'FULFILLED' } },
+      session ? { session } : {}
+    );
   }
   return reservations;
 }
