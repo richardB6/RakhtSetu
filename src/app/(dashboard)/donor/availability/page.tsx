@@ -158,7 +158,7 @@ export default function DonorAvailabilityPage() {
                 ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
                 : data?.availabilityStatus === 'TEMPORARILY_UNAVAILABLE'
                   ? 'bg-amber-100 text-amber-700 border-amber-200'
-                  : 'bg-slate-100 text-slate-600 border-slate-200'
+                  : 'bg-muted text-muted-foreground border-border'
             }
           >
             {data?.availabilityStatus?.replace(/_/g, ' ') || 'UNKNOWN'}

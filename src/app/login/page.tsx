@@ -1,9 +1,10 @@
 'use client';
 
 import React, { Suspense, useState } from 'react';
+import Image from 'next/image';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Droplets, Loader2, Eye, EyeOff } from 'lucide-react';
+import { Loader2, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -55,15 +56,18 @@ function LoginForm() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <div className="min-h-screen flex items-center justify-center bg-transparent p-4">
       <div className="w-full max-w-md space-y-6">
         {/* Logo */}
         <div className="text-center space-y-2">
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-primary/10 border border-primary/20">
-              <Droplets className="w-6 h-6 text-primary" />
-            </div>
-          </div>
+          <Image
+          src="/rakthsetu-logo.png"
+          alt="RakthSetu"
+          width={128}
+          height={128}
+          priority
+          className="mx-auto mb-4 h-28 w-28 rounded-3xl object-cover shadow-[0_8px_24px_rgba(252,185,181,0.24)]"
+          />
           <h1 className="text-2xl font-bold tracking-tight">RAKTHSETU</h1>
           <p className="text-sm text-muted-foreground">
             Emergency Blood Coordination Network
@@ -71,7 +75,7 @@ function LoginForm() {
         </div>
 
         {/* Login Form */}
-        <div className="rounded-lg border border-border bg-card p-6 space-y-4 shadow-sm">
+        <div className="surface-card p-6 space-y-4">
           <div className="space-y-1">
             <h2 className="text-lg font-semibold">Sign In</h2>
             <p className="text-xs text-muted-foreground">
@@ -169,7 +173,7 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-background" />}>
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-transparent" />}>
       <LoginForm />
     </Suspense>
   );

@@ -20,15 +20,15 @@ interface AuditEntry {
 }
 
 const ACTION_COLORS: Record<string, string> = {
-  EMERGENCY_CREATED: 'bg-red-500/10 text-red-400',
-  MATCHING_STARTED: 'bg-blue-500/10 text-blue-400',
+  EMERGENCY_CREATED: 'bg-red-50 text-red-700',
+  MATCHING_STARTED: 'bg-accent text-accent-foreground',
   MATCH_ACCEPTED: 'bg-emerald-500/10 text-emerald-400',
   MATCH_DECLINED: 'bg-amber-500/10 text-amber-400',
   REQUEST_FULFILLED: 'bg-emerald-500/10 text-emerald-400',
-  REQUEST_CANCELLED: 'bg-gray-500/10 text-gray-400',
-  INVENTORY_UPDATED: 'bg-blue-500/10 text-blue-400',
+  REQUEST_CANCELLED: 'bg-muted text-muted-foreground',
+  INVENTORY_UPDATED: 'bg-accent text-accent-foreground',
   ENTITY_VERIFIED: 'bg-emerald-500/10 text-emerald-400',
-  USER_REGISTERED: 'bg-purple-500/10 text-purple-400',
+  USER_REGISTERED: 'bg-accent text-accent-foreground',
   ESCALATION_TRIGGERED: 'bg-amber-500/10 text-amber-400',
 };
 

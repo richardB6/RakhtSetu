@@ -70,8 +70,8 @@ export default function EmergenciesListPage() {
     switch(level) {
       case 'CRITICAL': return 'bg-red-500';
       case 'HIGH': return 'bg-amber-500';
-      case 'NORMAL': return 'bg-blue-500';
-      default: return 'bg-slate-300';
+      case 'NORMAL': return 'bg-primary/40';
+      default: return 'bg-border';
     }
   };
 
@@ -79,9 +79,9 @@ export default function EmergenciesListPage() {
     let classes = 'px-2.5 py-0.5 rounded-full text-xs font-medium border ';
     switch(reqStatus) {
       case 'FULFILLED': classes += 'bg-emerald-50 text-emerald-700 border-emerald-200'; break;
-      case 'CANCELLED': classes += 'bg-slate-100 text-slate-600 border-slate-200'; break;
-      case 'MATCHING': classes += 'bg-blue-50 text-blue-700 border-blue-200'; break;
-      case 'RESOURCES_NOTIFIED': classes += 'bg-violet-50 text-violet-700 border-violet-200'; break;
+      case 'CANCELLED': classes += 'bg-muted text-muted-foreground border-border'; break;
+      case 'MATCHING': classes += 'bg-accent text-accent-foreground border-border'; break;
+      case 'RESOURCES_NOTIFIED': classes += 'bg-accent text-accent-foreground border-border'; break;
       case 'ESCALATED': classes += 'bg-red-50 text-red-700 border-red-200'; break;
       default: classes += 'bg-amber-50 text-amber-700 border-amber-200';
     }

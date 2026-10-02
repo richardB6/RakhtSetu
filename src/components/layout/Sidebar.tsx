@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
@@ -16,7 +17,6 @@ import {
   FileText,
   Settings,
   LogOut,
-  Droplets,
   Heart,
   Package,
   Activity,
@@ -190,9 +190,13 @@ export default function Sidebar() {
     <aside className="fixed left-0 top-0 z-40 flex h-screen w-64 flex-col border-r border-border bg-sidebar max-md:bottom-0 max-md:top-auto max-md:h-16 max-md:w-full max-md:flex-row max-md:border-r-0 max-md:border-t">
       {/* Logo Header */}
       <div className="flex items-center gap-3 border-b border-border px-5 py-5 max-md:hidden">
-        <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10">
-          <Droplets className="w-5 h-5 text-primary" />
-        </div>
+      <Image
+        src="/rakthsetu-logo.png"
+        alt="RakthSetu"
+        width={56}
+        height={56}
+        className="h-12 w-12 shrink-0 rounded-xl object-cover"
+      />
         <div>
           <h1 className="text-sm font-bold tracking-tight text-foreground">
             RAKTHSETU
@@ -233,7 +237,7 @@ export default function Sidebar() {
               className={cn(
                 'focus-control flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
                 isActive
-                  ? 'bg-primary/10 text-primary'
+                  ? 'bg-sidebar-accent text-primary'
                   : 'text-muted-foreground hover:text-foreground hover:bg-accent'
               )}
             >

@@ -6,9 +6,9 @@ import { useSearchParams } from 'next/navigation';
 const ResourceMap = dynamic(() => import('./ResourceMap'), {
   ssr: false,
   loading: () => (
-    <div className="w-full h-full bg-slate-900 rounded-lg flex items-center justify-center border border-slate-800">
-      <div className="text-slate-400 flex flex-col items-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-400 mb-4"></div>
+    <div className="w-full h-full bg-white rounded-lg flex items-center justify-center border border-border shadow-[0_8px_30px_rgba(252,185,181,0.18)]">
+      <div className="text-muted-foreground flex flex-col items-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-4"></div>
         <p>Loading map...</p>
       </div>
     </div>

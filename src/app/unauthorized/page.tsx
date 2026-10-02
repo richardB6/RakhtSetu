@@ -3,7 +3,7 @@ import { ShieldAlert } from 'lucide-react';
 
 export default function UnauthorizedPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <div className="min-h-screen flex items-center justify-center bg-transparent p-4">
       <div className="text-center space-y-4 max-w-sm">
         <ShieldAlert className="w-16 h-16 text-destructive mx-auto" />
         <h1 className="text-2xl font-bold">Access Denied</h1>

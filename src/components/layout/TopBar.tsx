@@ -117,7 +117,7 @@ export default function TopBar() {
     ) > 0;
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border/80 bg-background/95 px-4 backdrop-blur-md md:px-6">
+    <header className="app-header sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-background/90 px-4 backdrop-blur-md md:px-6">
       {/* Left: Context info */}
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2 text-muted-foreground">
@@ -219,7 +219,7 @@ export default function TopBar() {
                       >
                         <span className="font-medium">{d.bloodGroup} Donor</span>
                         <span className="text-xs text-muted-foreground">{d.city}</span>
-                        <Badge className={`text-[10px] ${d.isAvailable ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                        <Badge className={`text-[10px] ${d.isAvailable ? 'bg-emerald-100 text-emerald-700' : 'bg-muted text-muted-foreground'}`}>
                           {d.availabilityStatus.replace(/_/g, ' ')}
                         </Badge>
                       </div>

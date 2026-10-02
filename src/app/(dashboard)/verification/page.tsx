@@ -80,7 +80,7 @@ export default function VerificationPage() {
       case 'VERIFIED': return <Badge className="bg-emerald-500/10 text-emerald-400 text-xs">Verified</Badge>;
       case 'PENDING': return <Badge className="bg-amber-500/10 text-amber-400 text-xs">Pending</Badge>;
       case 'REJECTED': return <Badge className="bg-red-500/10 text-red-400 text-xs">Rejected</Badge>;
-      case 'SUSPENDED': return <Badge className="bg-gray-500/10 text-gray-400 text-xs">Suspended</Badge>;
+      case 'SUSPENDED': return <Badge className="bg-muted text-muted-foreground text-xs">Suspended</Badge>;
       default: return <Badge variant="secondary" className="text-xs">{status}</Badge>;
     }
   };

@@ -168,7 +168,7 @@ export default function NewEmergencyPage() {
                         className={`p-4 border rounded-lg flex flex-col items-center justify-center gap-2 transition-all ${
                           isSelected 
                             ? `border-${config.color}-500 bg-${config.color}-50 ring-2 ring-${config.color}-500/20` 
-                            : 'hover:bg-slate-50'
+                            : 'hover:bg-accent'
                         }`}
                       >
                         {level === 'CRITICAL' && <ShieldAlert className={`w-6 h-6 text-red-500 ${isSelected ? 'animate-pulse' : ''}`} />}
@@ -216,17 +216,17 @@ export default function NewEmergencyPage() {
             
             <div className="space-y-6">
               <div>
-                <div className="text-sm text-slate-500 mb-1">Requirement</div>
+                <div className="text-sm text-muted-foreground mb-1">Requirement</div>
                 <div className="flex items-center gap-2 text-2xl font-bold text-foreground">
                   {formData.quantity}x {formData.bloodGroup || '??'}
                 </div>
-                <div className="text-sm font-medium text-slate-600">
+                <div className="text-sm font-medium text-muted-foreground">
                   {formData.component ? COMPONENT_LABELS[formData.component as ComponentType] : 'Select Component'}
                 </div>
               </div>
 
               <div className="pt-4 border-t">
-                <div className="text-sm text-slate-500 mb-1">Severity & Timeline</div>
+                <div className="text-sm text-muted-foreground mb-1">Severity & Timeline</div>
                 <div className="flex items-center gap-2 mb-2">
                   {selectedSeverity && (
                     <span className={`inline-flex w-3 h-3 rounded-full bg-${selectedSeverity.color}-500 ${formData.severity === 'CRITICAL' ? 'animate-pulse' : ''}`} />
@@ -234,16 +234,16 @@ export default function NewEmergencyPage() {
                   <span className="font-semibold">{selectedSeverity?.label || 'Select'}</span>
                 </div>
                 {formData.requiredBy && (
-                  <div className="text-sm text-slate-600">
+                  <div className="text-sm text-muted-foreground">
                     By: {new Date(formData.requiredBy).toLocaleString()}
                   </div>
                 )}
               </div>
 
               <div className="pt-4 border-t">
-                <div className="text-sm text-slate-500 mb-1">Patient Details</div>
+                <div className="text-sm text-muted-foreground mb-1">Patient Details</div>
                 <div className="font-medium">{formData.patientReference || 'Pending reference'}</div>
-                <div className="text-sm text-slate-600">
+                <div className="text-sm text-muted-foreground">
                   {[formData.patientAge ? `${formData.patientAge}y` : null, formData.patientGender].filter(Boolean).join(' • ')}
                 </div>
               </div>

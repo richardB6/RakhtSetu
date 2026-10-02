@@ -52,17 +52,17 @@ interface MatchEntry {
 const SEVERITY_COLORS: Record<string, string> = {
   CRITICAL: 'bg-red-50 border-red-200 text-red-700',
   HIGH: 'bg-amber-50 border-amber-200 text-amber-700',
-  NORMAL: 'bg-blue-50 border-blue-200 text-blue-700',
+  NORMAL: 'bg-accent border-border text-accent-foreground',
 };
 
 const STATUS_BADGE: Record<string, string> = {
-  NOTIFIED:  'bg-violet-50 border-violet-200 text-violet-700',
+  NOTIFIED:  'bg-accent border-border text-accent-foreground',
   PENDING:   'bg-amber-50 border-amber-200 text-amber-700',
   ACCEPTED:  'bg-emerald-50 border-emerald-200 text-emerald-700',
-  DECLINED:  'bg-slate-100 border-slate-200 text-slate-600',
-  RESERVED:  'bg-blue-50 border-blue-200 text-blue-700',
+  DECLINED:  'bg-muted border-border text-muted-foreground',
+  RESERVED:  'bg-accent border-border text-accent-foreground',
   FULFILLED: 'bg-emerald-100 border-emerald-300 text-emerald-800',
-  CANCELLED: 'bg-slate-100 border-slate-200 text-slate-500',
+  CANCELLED: 'bg-muted border-border text-muted-foreground',
   EXPIRED:   'bg-red-50 border-red-200 text-red-600',
 };
 
@@ -342,7 +342,7 @@ export default function BloodBankRequestsPage() {
                           <>
                             <Button
                               size="sm"
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                              className="bg-primary text-primary-foreground"
                               disabled={isActing}
                               onClick={() => respond(match._id, true)}
                             >

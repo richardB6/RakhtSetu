@@ -37,7 +37,16 @@ interface AnalyticsData {
   fulfillmentByResourceType: Array<{ _id: string; count: number }>;
 }
 
-const COLORS = ['#ef4444', '#f59e0b', '#3b82f6', '#10b981', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
+const COLORS = [
+  'var(--chart-1)',
+  'var(--chart-2)',
+  'var(--chart-3)',
+  'var(--chart-4)',
+  'var(--chart-5)',
+  'var(--chart-6)',
+  'var(--chart-7)',
+  'var(--chart-8)',
+];
 
 export default function AnalyticsPage() {
   const [data, setData] = useState<AnalyticsData | null>(null);
@@ -148,8 +157,8 @@ export default function AnalyticsPage() {
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-2 mb-2">
-            <div className="p-1.5 rounded-md bg-blue-500/10">
-              <TrendingUp className="w-3.5 h-3.5 text-blue-500" />
+            <div className="p-1.5 rounded-md bg-accent">
+              <TrendingUp className="w-3.5 h-3.5 text-primary" />
             </div>
             <span className="text-xs text-muted-foreground">Fulfilled</span>
           </div>
@@ -176,14 +185,14 @@ export default function AnalyticsPage() {
           <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={data?.byDay || []}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                <XAxis dataKey="_id" tick={{ fontSize: 10, fill: '#888' }} />
-                <YAxis tick={{ fontSize: 10, fill: '#888' }} />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis dataKey="_id" tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} />
+                <YAxis tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} />
                 <Tooltip
-                  contentStyle={{ backgroundColor: '#1a1a2e', border: '1px solid #333', borderRadius: 6, fontSize: 12 }}
-                  labelStyle={{ color: '#999' }}
+                  contentStyle={{ backgroundColor: 'var(--popover)', border: '1px solid var(--border)', borderRadius: 12, color: 'var(--popover-foreground)', fontSize: 12, boxShadow: 'var(--surface-glow)' }}
+                  labelStyle={{ color: 'var(--muted-foreground)' }}
                 />
-                <Area type="monotone" dataKey="count" stroke="#ef4444" fill="#ef4444" fillOpacity={0.1} strokeWidth={2} />
+                <Area type="monotone" dataKey="count" stroke="var(--chart-1)" fill="var(--chart-1)" fillOpacity={0.1} strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -195,13 +204,13 @@ export default function AnalyticsPage() {
           <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data?.bySeverity || []}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                <XAxis dataKey="_id" tick={{ fontSize: 10, fill: '#888' }} />
-                <YAxis tick={{ fontSize: 10, fill: '#888' }} />
-                <Tooltip contentStyle={{ backgroundColor: '#1a1a2e', border: '1px solid #333', borderRadius: 6, fontSize: 12 }} />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis dataKey="_id" tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} />
+                <YAxis tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} />
+                <Tooltip contentStyle={{ backgroundColor: 'var(--popover)', border: '1px solid var(--border)', borderRadius: 12, color: 'var(--popover-foreground)', fontSize: 12, boxShadow: 'var(--surface-glow)' }} />
                 <Bar dataKey="count" radius={[4, 4, 0, 0]}>
                   {(data?.bySeverity || []).map((entry, idx) => (
-                    <Cell key={idx} fill={entry._id === 'CRITICAL' ? '#ef4444' : entry._id === 'HIGH' ? '#f59e0b' : '#3b82f6'} />
+                    <Cell key={idx} fill={entry._id === 'CRITICAL' ? 'var(--chart-1)' : entry._id === 'HIGH' ? 'var(--warning)' : 'var(--chart-3)'} />
                   ))}
                 </Bar>
               </BarChart>
@@ -215,10 +224,10 @@ export default function AnalyticsPage() {
           <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data?.byBloodGroup || []} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                <XAxis type="number" tick={{ fontSize: 10, fill: '#888' }} />
-                <YAxis dataKey="_id" type="category" tick={{ fontSize: 10, fill: '#888' }} width={40} />
-                <Tooltip contentStyle={{ backgroundColor: '#1a1a2e', border: '1px solid #333', borderRadius: 6, fontSize: 12 }} />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis type="number" tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} />
+                <YAxis dataKey="_id" type="category" tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} width={40} />
+                <Tooltip contentStyle={{ backgroundColor: 'var(--popover)', border: '1px solid var(--border)', borderRadius: 12, color: 'var(--popover-foreground)', fontSize: 12, boxShadow: 'var(--surface-glow)' }} />
                 <Bar dataKey="count" radius={[0, 4, 4, 0]}>
                   {(data?.byBloodGroup || []).map((_, idx) => (
                     <Cell key={idx} fill={COLORS[idx % COLORS.length]} />
@@ -254,7 +263,7 @@ export default function AnalyticsPage() {
                     <Cell key={idx} fill={COLORS[idx % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip contentStyle={{ backgroundColor: '#1a1a2e', border: '1px solid #333', borderRadius: 6, fontSize: 12 }} />
+                <Tooltip contentStyle={{ backgroundColor: 'var(--popover)', border: '1px solid var(--border)', borderRadius: 12, color: 'var(--popover-foreground)', fontSize: 12, boxShadow: 'var(--surface-glow)' }} />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -262,17 +271,17 @@ export default function AnalyticsPage() {
 
         <Card className="p-4">
           <h3 className="text-sm font-semibold mb-4">Requests by Status</h3>
-          <div className="h-56"><ResponsiveContainer width="100%" height="100%"><BarChart data={data?.byStatus || []}><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" /><XAxis dataKey="_id" tick={{ fontSize: 9, fill: '#888' }} angle={-25} textAnchor="end" height={55} /><YAxis tick={{ fontSize: 10, fill: '#888' }} /><Tooltip /><Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer></div>
+          <div className="h-56"><ResponsiveContainer width="100%" height="100%"><BarChart data={data?.byStatus || []}><CartesianGrid strokeDasharray="3 3" stroke="var(--border)" /><XAxis dataKey="_id" tick={{ fontSize: 9, fill: 'var(--muted-text)' }} angle={-25} textAnchor="end" height={55} /><YAxis tick={{ fontSize: 10, fill: 'var(--muted-text)' }} /><Tooltip /><Bar dataKey="count" fill="var(--chart-1)" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer></div>
         </Card>
 
         <Card className="p-4">
           <h3 className="text-sm font-semibold mb-4">Response Time Over Time</h3>
-          {!data?.responseByDay?.length ? <p className="flex h-56 items-center justify-center text-sm text-muted-foreground">Insufficient data</p> : <div className="h-56"><ResponsiveContainer width="100%" height="100%"><LineChart data={data.responseByDay}><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" /><XAxis dataKey="_id" tick={{ fontSize: 10, fill: '#888' }} /><YAxis tick={{ fontSize: 10, fill: '#888' }} /><Tooltip /><Line type="monotone" dataKey="averageMinutes" stroke="#f59e0b" strokeWidth={2} dot={false} /></LineChart></ResponsiveContainer></div>}
+          {!data?.responseByDay?.length ? <p className="flex h-56 items-center justify-center text-sm text-muted-foreground">Insufficient data</p> : <div className="h-56"><ResponsiveContainer width="100%" height="100%"><LineChart data={data.responseByDay}><CartesianGrid strokeDasharray="3 3" stroke="var(--border)" /><XAxis dataKey="_id" tick={{ fontSize: 10, fill: 'var(--muted-text)' }} /><YAxis tick={{ fontSize: 10, fill: 'var(--muted-text)' }} /><Tooltip /><Line type="monotone" dataKey="averageMinutes" stroke="var(--chart-2)" strokeWidth={2} dot={false} /></LineChart></ResponsiveContainer></div>}
         </Card>
 
         <Card className="p-4">
           <h3 className="text-sm font-semibold mb-4">Requests by Hour</h3>
-          {!data?.byHour?.length ? <p className="flex h-56 items-center justify-center text-sm text-muted-foreground">Insufficient data</p> : <div className="h-56"><ResponsiveContainer width="100%" height="100%"><AreaChart data={data.byHour}><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" /><XAxis dataKey="_id" tick={{ fontSize: 10, fill: '#888' }} /><YAxis tick={{ fontSize: 10, fill: '#888' }} /><Tooltip /><Area type="monotone" dataKey="count" stroke="#10b981" fill="#10b981" fillOpacity={0.15} /></AreaChart></ResponsiveContainer></div>}
+          {!data?.byHour?.length ? <p className="flex h-56 items-center justify-center text-sm text-muted-foreground">Insufficient data</p> : <div className="h-56"><ResponsiveContainer width="100%" height="100%"><AreaChart data={data.byHour}><CartesianGrid strokeDasharray="3 3" stroke="var(--border)" /><XAxis dataKey="_id" tick={{ fontSize: 10, fill: 'var(--muted-text)' }} /><YAxis tick={{ fontSize: 10, fill: 'var(--muted-text)' }} /><Tooltip /><Area type="monotone" dataKey="count" stroke="var(--chart-3)" fill="var(--chart-3)" fillOpacity={0.15} /></AreaChart></ResponsiveContainer></div>}
         </Card>
 
         <Card className="p-4">

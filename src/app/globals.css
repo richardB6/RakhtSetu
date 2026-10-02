@@ -55,74 +55,72 @@
   --color-success-foreground: var(--success-foreground);
 }
 
-/* ─── RakthSetu Light-Mode Healthcare Design System ─────────────────────────
- *
- * Clean white backgrounds, warm-neutral surfaces, restrained medical-red
- * primary accent (#c0392b / oklch(0.52 0.18 28)), readable dark text,
- * and accessible status colors meeting WCAG AA contrast.
- *
- * ──────────────────────────────────────────────────────────────────────────── */
+/* ─── RakthSetu white and soft-pink design system ─────────────────────────── */
 :root {
-  /* Background & surfaces */
-  --background:          oklch(0.99 0.003 240);   /* Near-white with faint cool tint */
-  --foreground:          oklch(0.18 0.01 240);    /* Deep charcoal — readable */
+  --white: #ffffff;
+  --soft-background: #fdf2f2;
+  --light-pink: #fcd2d0;
+  --primary-red: #e60000;
+  --dark-red: #c90000;
+  --primary-text: #151a23;
+  --secondary-text: #5f6368;
+  --muted-text: #8a8f98;
+  --light-border: #f3dada;
+  --very-light-border: #f8eaea;
+  --table-header: #fff7f7;
 
-  /* Cards & popovers */
-  --card:                oklch(1 0 0);            /* Pure white cards */
-  --card-foreground:     oklch(0.18 0.01 240);
-  --popover:             oklch(1 0 0);
-  --popover-foreground:  oklch(0.18 0.01 240);
+  --background: var(--white);
+  --foreground: var(--primary-text);
+  --card: var(--white);
+  --card-foreground: var(--primary-text);
+  --popover: var(--white);
+  --popover-foreground: var(--primary-text);
+  --primary: var(--primary-red);
+  --primary-foreground: var(--white);
+  --secondary: var(--soft-background);
+  --secondary-foreground: var(--primary-text);
+  --muted: var(--soft-background);
+  --muted-foreground: var(--secondary-text);
+  --accent: #fff1f1;
+  --accent-foreground: var(--dark-red);
+  --destructive: var(--dark-red);
+  --border: var(--light-border);
+  --input: var(--light-border);
+  --ring: var(--primary-red);
+  --radius: 1rem;
 
-  /* Primary — medical red (restrained, professional) */
-  --primary:             oklch(0.52 0.18 28);     /* #c0392b-ish deep red */
-  --primary-foreground:  oklch(0.99 0 0);
+  --emergency: var(--primary-red);
+  --emergency-foreground: var(--white);
+  --warning: #b7791f;
+  --warning-foreground: var(--primary-text);
+  --success: #18794e;
+  --success-foreground: var(--white);
 
-  /* Secondary — warm neutral */
-  --secondary:           oklch(0.96 0.005 240);
-  --secondary-foreground:oklch(0.18 0.01 240);
+  --chart-1: var(--primary-red);
+  --chart-2: var(--dark-red);
+  --chart-3: #f06a68;
+  --chart-4: #fcd2d0;
+  --chart-5: #8a2d32;
+  --chart-6: #f3a6a3;
+  --chart-7: #d95d5d;
+  --chart-8: #f8eaea;
 
-  /* Muted — light grey */
-  --muted:               oklch(0.96 0.005 240);
-  --muted-foreground:    oklch(0.52 0.01 240);
+  --sidebar: var(--white);
+  --sidebar-foreground: var(--primary-text);
+  --sidebar-primary: var(--primary-red);
+  --sidebar-primary-foreground: var(--white);
+  --sidebar-accent: #fff1f1;
+  --sidebar-accent-foreground: var(--primary-red);
+  --sidebar-border: var(--light-border);
+  --sidebar-ring: var(--primary-red);
 
-  /* Accent — soft blue-grey hover state */
-  --accent:              oklch(0.94 0.01 240);
-  --accent-foreground:   oklch(0.25 0.01 240);
-
-  /* Destructive — slightly lighter red for non-primary destructive actions */
-  --destructive:         oklch(0.58 0.20 28);
-
-  /* Borders & inputs */
-  --border:              oklch(0.88 0.006 240);
-  --input:               oklch(0.93 0.005 240);
-  --ring:                oklch(0.52 0.18 28);     /* Focus ring matches primary */
-
-  --radius: 0.375rem;
-
-  /* Emergency status colors */
-  --emergency:           oklch(0.52 0.20 28);     /* Critical red */
-  --emergency-foreground:oklch(0.99 0 0);
-  --warning:             oklch(0.72 0.15 65);     /* Amber */
-  --warning-foreground:  oklch(0.18 0.01 0);
-  --success:             oklch(0.60 0.16 148);    /* Healthcare green */
-  --success-foreground:  oklch(0.99 0 0);
-
-  /* Chart colors — harmonious healthcare palette */
-  --chart-1:             oklch(0.52 0.18 28);     /* Red */
-  --chart-2:             oklch(0.55 0.14 240);    /* Blue */
-  --chart-3:             oklch(0.60 0.16 148);    /* Green */
-  --chart-4:             oklch(0.72 0.15 65);     /* Amber */
-  --chart-5:             oklch(0.55 0.14 300);    /* Purple */
-
-  /* Sidebar — white with subtle left border */
-  --sidebar:             oklch(0.995 0.002 240);
-  --sidebar-foreground:  oklch(0.25 0.01 240);
-  --sidebar-primary:     oklch(0.52 0.18 28);
-  --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent:      oklch(0.95 0.007 28);    /* Faint red tint on hover */
-  --sidebar-accent-foreground: oklch(0.52 0.18 28);
-  --sidebar-border:      oklch(0.88 0.006 240);
-  --sidebar-ring:        oklch(0.52 0.18 28);
+  --surface-border: var(--light-border);
+  --surface-glow: 0 8px 30px rgba(252, 185, 181, 0.18), 0 2px 8px rgba(230, 0, 0, 0.04);
+  --surface-glow-hover: 0 12px 35px rgba(252, 185, 181, 0.28), 0 4px 12px rgba(230, 0, 0, 0.06);
+  --button-glow: 0 6px 20px rgba(230, 0, 0, 0.2);
+  --button-glow-hover: 0 8px 25px rgba(230, 0, 0, 0.28);
+  --secondary-button-glow: 0 5px 18px rgba(252, 185, 181, 0.18);
+  --modal-glow: 0 20px 60px rgba(252, 185, 181, 0.3);
 }
 
 @layer base {
@@ -130,11 +128,175 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground antialiased;
+    @apply text-foreground antialiased;
+    min-height: 100vh;
+    background: radial-gradient(
+      circle at 50% 20%,
+      var(--white) 0%,
+      var(--white) 45%,
+      var(--soft-background) 75%,
+      var(--light-pink) 100%
+    );
+    background-attachment: fixed;
   }
   html {
     @apply font-sans scroll-smooth;
+    color-scheme: light;
   }
+}
+
+.surface-card,
+[class~="bg-card"],
+[data-slot="card"],
+.ops-panel {
+  border: 1px solid var(--surface-border);
+  border-radius: 16px;
+  background: var(--white);
+  box-shadow: var(--surface-glow);
+  transition: all 0.25s ease;
+}
+
+.surface-card:hover,
+[class~="bg-card"]:hover,
+[data-slot="card"]:hover,
+.ops-panel:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--surface-glow-hover);
+}
+
+[data-slot="button"].bg-primary {
+  box-shadow: var(--button-glow);
+}
+
+[data-slot="button"].bg-primary:hover {
+  background-color: var(--dark-red);
+  box-shadow: var(--button-glow-hover);
+}
+
+.primary-action {
+  box-shadow: var(--button-glow);
+  transition: all 0.25s ease;
+}
+
+.primary-action:hover {
+  background-color: var(--dark-red);
+  box-shadow: var(--button-glow-hover);
+}
+
+.secondary-action {
+  box-shadow: var(--secondary-button-glow);
+  transition: all 0.25s ease;
+}
+
+[data-slot="button"].border-border.bg-background,
+[data-slot="button"].bg-secondary {
+  box-shadow: var(--secondary-button-glow);
+}
+
+[data-slot="input"],
+[data-slot="select-trigger"],
+input:not([type="checkbox"]):not([type="radio"]),
+select,
+textarea {
+  border-color: var(--light-border);
+  border-radius: 10px;
+  background-color: var(--white);
+  color: var(--primary-text);
+}
+
+[data-slot="input"]:focus-visible,
+[data-slot="select-trigger"]:focus-visible,
+input:not([type="checkbox"]):not([type="radio"]):focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  border-color: var(--primary-red);
+  box-shadow: 0 0 0 3px rgba(230, 0, 0, 0.08);
+  outline: none;
+}
+
+[data-slot="table-container"] {
+  overflow: hidden;
+  border: 1px solid var(--light-border);
+  border-radius: 16px;
+  background: var(--white);
+}
+
+table:not([data-slot="table"]) {
+  border: 1px solid var(--light-border);
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: 16px;
+  background: var(--white);
+}
+
+[data-slot="table-head"],
+table:not([data-slot="table"]) th {
+  background: var(--table-header);
+}
+
+[data-slot="table-row"],
+table:not([data-slot="table"]) tbody tr {
+  border-color: var(--very-light-border);
+}
+
+[data-slot="table-header"] {
+  background: var(--table-header);
+}
+
+[data-slot="table-row"]:hover {
+  background: #fff9f9;
+}
+
+[data-slot="card-header"],
+[data-slot="card-footer"],
+[data-slot="dialog-footer"] {
+  background: var(--white);
+}
+
+[data-slot="dialog-content"],
+[data-slot="popover-content"],
+[data-slot="dropdown-menu-content"],
+[data-slot="sheet-content"] {
+  border: 1px solid var(--light-border);
+  border-radius: 16px;
+  background: var(--white);
+  box-shadow: var(--modal-glow);
+}
+
+[data-slot="dialog-overlay"],
+[data-slot="sheet-overlay"] {
+  background-color: rgba(21, 26, 35, 0.18);
+}
+
+.status-normal {
+  color: var(--dark-red);
+  border-color: var(--light-border);
+  background: var(--soft-background);
+}
+
+.status-high {
+  color: #9a3412;
+  border-color: #fed7aa;
+  background: #fff7ed;
+}
+
+.status-pending {
+  color: #92400e;
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.app-header {
+  box-shadow: 0 4px 18px rgba(252, 185, 181, 0.1);
+}
+
+.step-marker {
+  border: 1px solid var(--light-border);
+  box-shadow: 0 4px 14px rgba(252, 185, 181, 0.18);
+}
+
+.floating-avatar {
+  box-shadow: 0 8px 24px rgba(252, 185, 181, 0.24);
 }
 
 /* Emergency pulse animation */
@@ -149,8 +311,8 @@
 
 /* Critical glow for emergency indicators */
 @keyframes critical-glow {
-  0%, 100% { box-shadow: 0 0 4px 0 oklch(0.52 0.20 28 / 0.25); }
-  50% { box-shadow: 0 0 10px 2px oklch(0.52 0.20 28 / 0.40); }
+  0%, 100% { box-shadow: 0 0 4px 0 rgba(230, 0, 0, 0.25); }
+  50% { box-shadow: 0 0 10px 2px rgba(230, 0, 0, 0.4); }
 }
 
 .animate-critical-glow {
@@ -173,22 +335,15 @@
   height: 6px;
 }
 
-::-webkit-scrollbar-track {
-  background: oklch(0.95 0.004 240);
-}
+::-webkit-scrollbar-track { background: var(--soft-background); }
 
-::-webkit-scrollbar-thumb {
-  background: oklch(0.78 0.008 240);
-  border-radius: 3px;
-}
+::-webkit-scrollbar-thumb { background: var(--light-border); border-radius: 3px; }
 
-::-webkit-scrollbar-thumb:hover {
-  background: oklch(0.65 0.01 240);
-}
+::-webkit-scrollbar-thumb:hover { background: var(--light-pink); }
 
 /* Leaflet map container — light style */
 .leaflet-container {
-  background: oklch(0.96 0.005 240) !important;
+  background: var(--soft-background) !important;
   border-radius: var(--radius);
 }
 
@@ -204,10 +359,10 @@
   }
   /* Status badges with accessible text labels */
   .status-available  { @apply text-emerald-700 bg-emerald-50 border-emerald-200; }
-  .status-unavailable{ @apply text-slate-600  bg-slate-100  border-slate-200;  }
+  .status-unavailable{ @apply text-muted-foreground bg-muted border-border; }
   .status-critical   { @apply text-red-700    bg-red-50     border-red-200;    }
   .status-high       { @apply text-orange-700 bg-orange-50  border-orange-200; }
-  .status-normal     { @apply text-blue-700   bg-blue-50    border-blue-200;   }
+  .status-normal     { @apply text-accent-foreground bg-accent border-border; }
   .status-pending    { @apply text-amber-700  bg-amber-50   border-amber-200;  }
 }
 

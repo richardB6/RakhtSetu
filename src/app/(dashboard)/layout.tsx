@@ -15,7 +15,7 @@ export default function DashboardLayout({
 
   if (loading) {
     return (
-      <div className="h-screen w-screen flex items-center justify-center bg-background">
+      <div className="h-screen w-screen flex items-center justify-center bg-transparent">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
           <p className="text-sm text-muted-foreground">Loading RakthSetu...</p>

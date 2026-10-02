@@ -1,10 +1,11 @@
 'use client';
 
 import { useState } from 'react';
+import Image from 'next/image';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Droplets, Loader2, Eye, EyeOff, MapPin } from 'lucide-react';
+import { Loader2, Eye, EyeOff, MapPin } from 'lucide-react';
 import { UserRole } from '@/types';
 import { getCityCoordinates, getBrowserLocation } from '@/lib/utils/geocode';
 
@@ -149,15 +150,18 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <div className="min-h-screen flex items-center justify-center bg-transparent p-4">
       <div className="w-full max-w-lg space-y-6">
         {/* Logo */}
         <div className="text-center space-y-2">
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-primary/10 border border-primary/20">
-              <Droplets className="w-6 h-6 text-primary" />
-            </div>
-          </div>
+          <Image
+            src="/rakthsetu-logo.png"
+            alt="RakthSetu"
+            width={128}
+            height={128}
+            priority
+            className="mx-auto mb-4 h-28 w-28 rounded-3xl object-cover shadow-[0_8px_24px_rgba(252,185,181,0.24)]"
+          />
           <h1 className="text-2xl font-bold tracking-tight">RAKTHSETU</h1>
           <p className="text-sm text-muted-foreground">
             Emergency Blood Coordination Network
@@ -165,7 +169,7 @@ export default function RegisterPage() {
         </div>
 
         {/* Form Card */}
-        <div className="rounded-lg border border-border bg-card p-6 space-y-4">
+        <div className="surface-card p-6 space-y-4">
           <div className="space-y-1">
             <h2 className="text-lg font-semibold">Create Account</h2>
             <p className="text-xs text-muted-foreground">

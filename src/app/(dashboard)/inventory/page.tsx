@@ -119,7 +119,7 @@ function HospitalInventoryView() {
                     <td className="px-4 py-3">{em.quantity}</td>
                     <td className="px-4 py-3">{em.matchCount || 0}</td>
                     <td className="px-4 py-3">
-                      <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                      <Badge variant="outline" className="bg-accent text-accent-foreground border-border">
                         {em.status.replace(/_/g, ' ')}
                       </Badge>
                     </td>

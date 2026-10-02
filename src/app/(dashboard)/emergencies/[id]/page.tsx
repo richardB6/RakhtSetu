@@ -186,61 +186,61 @@ export default function EmergencyDetailPage() {
           <Card className="ops-panel">
             <CardHeader className="border-b border-border/70 bg-muted/20">
               <CardTitle className="flex items-center gap-2">
-                <Activity className="w-5 h-5 text-zinc-400" />
+                <Activity className="w-5 h-5 text-muted-foreground" />
                 Request Information
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-6">
               <div className="grid grid-cols-2 gap-y-6 gap-x-4">
-                <div className="col-span-2 flex justify-between items-start bg-zinc-900/50 p-4 rounded-lg border border-zinc-800">
+                <div className="col-span-2 flex justify-between items-start bg-white p-4 rounded-lg border border-border">
                   <div>
-                    <p className="text-sm text-zinc-400">Blood Group</p>
+                    <p className="text-sm text-muted-foreground">Blood Group</p>
                     <div className="text-4xl font-bold text-red-500 mt-1">{emergency.bloodGroup}</div>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm text-zinc-400">Quantity</p>
+                    <p className="text-sm text-muted-foreground">Quantity</p>
                     <div className="text-2xl font-bold">{emergency.quantityFulfilled} / {emergency.quantity}</div>
-                    <p className="text-xs text-zinc-500">Units Required</p>
+                    <p className="text-xs text-muted-foreground">Units Required</p>
                   </div>
                 </div>
 
                 <div>
-                  <p className="text-sm text-zinc-400 flex items-center gap-1.5"><Droplets className="w-4 h-4"/> Component</p>
+                  <p className="text-sm text-muted-foreground flex items-center gap-1.5"><Droplets className="w-4 h-4"/> Component</p>
                   <p className="font-medium mt-1">{COMPONENT_LABELS[emergency.component] || emergency.component}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-zinc-400 flex items-center gap-1.5"><User className="w-4 h-4"/> Patient Ref</p>
+                  <p className="text-sm text-muted-foreground flex items-center gap-1.5"><User className="w-4 h-4"/> Patient Ref</p>
                   <p className="font-medium mt-1">{emergency.patientReference}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-zinc-400 flex items-center gap-1.5"><Clock className="w-4 h-4"/> Required By</p>
+                  <p className="text-sm text-muted-foreground flex items-center gap-1.5"><Clock className="w-4 h-4"/> Required By</p>
                   <p className="font-medium mt-1">{formatTime(emergency.requiredBy)} {formatDate(emergency.requiredBy)}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-zinc-400 flex items-center gap-1.5"><AlertTriangle className="w-4 h-4"/> Severity</p>
+                  <p className="text-sm text-muted-foreground flex items-center gap-1.5"><AlertTriangle className="w-4 h-4"/> Severity</p>
                   <p className="font-medium mt-1">{severityConfig.label}</p>
                 </div>
                 
-                <div className="col-span-2 pt-4 border-t border-zinc-800/50">
-                  <p className="text-sm text-zinc-400 flex items-center gap-1.5 mb-1"><Building2 className="w-4 h-4"/> Facility & Contact</p>
+                <div className="col-span-2 pt-4 border-t border-border">
+                  <p className="text-sm text-muted-foreground flex items-center gap-1.5 mb-1"><Building2 className="w-4 h-4"/> Facility & Contact</p>
                   <p className="font-medium">{emergency.hospital?.name || 'Hospital'}</p>
-                  <p className="text-sm text-zinc-300 mt-0.5">{emergency.contactPerson} • {emergency.contactPhone}</p>
-                  <p className="text-sm text-zinc-400 mt-1 flex items-start gap-1"><MapPin className="w-4 h-4 shrink-0 mt-0.5"/> {emergency.address}, {emergency.city}</p>
-                  <Link href={`/map?emergencyId=${encodeURIComponent(emergency._id)}`} className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-blue-400 hover:text-blue-300">
+                  <p className="text-sm text-foreground mt-0.5">{emergency.contactPerson} • {emergency.contactPhone}</p>
+                  <p className="text-sm text-muted-foreground mt-1 flex items-start gap-1"><MapPin className="w-4 h-4 shrink-0 mt-0.5"/> {emergency.address}, {emergency.city}</p>
+                  <Link href={`/map?emergencyId=${encodeURIComponent(emergency._id)}`} className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:text-destructive">
                     <MapPin className="h-4 w-4" /> View nearby resources
                   </Link>
                 </div>
 
                 {emergency.notes && (
-                  <div className="col-span-2 bg-zinc-900/30 p-3 rounded-lg border border-zinc-800/50 text-sm">
-                    <span className="font-medium text-zinc-300">Notes:</span> <span className="text-zinc-400">{emergency.notes}</span>
+                  <div className="col-span-2 bg-white p-3 rounded-lg border border-border text-sm">
+                    <span className="font-medium text-foreground">Notes:</span> <span className="text-muted-foreground">{emergency.notes}</span>
                   </div>
                 )}
               </div>
             </CardContent>
-            <CardFooter className="flex flex-col gap-3 pt-4 border-t border-zinc-800">
+            <CardFooter className="flex flex-col gap-3 pt-4 border-t border-border">
               {canRunMatching && (
-                <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white" onClick={handleRunMatching}>
+                <Button className="w-full bg-primary hover:bg-primary/90 text-white" onClick={handleRunMatching}>
                   <Play className="w-4 h-4 mr-2" />
                   Run Matching Engine
                 </Button>
@@ -265,7 +265,7 @@ export default function EmergencyDetailPage() {
               {timeline.map((event) => (
                 <div key={event._id} className="border-l-2 border-red-500/40 pl-3">
                   <p className="text-sm font-medium">{event.description}</p>
-                  <p className="text-xs text-zinc-500">{new Date(event.createdAt).toLocaleString()}</p>
+                  <p className="text-xs text-muted-foreground">{new Date(event.createdAt).toLocaleString()}</p>
                 </div>
               ))}
             </CardContent>
@@ -278,13 +278,13 @@ export default function EmergencyDetailPage() {
             <CardHeader className="border-b border-border/70 bg-muted/20 pb-4">
               <div className="flex justify-between items-center">
                 <CardTitle className="text-lg">MATCHED RESOURCES</CardTitle>
-                <Badge variant="secondary" className="bg-zinc-800 text-zinc-300">{matches.length}</Badge>
+                <Badge variant="secondary" className="bg-accent text-accent-foreground">{matches.length}</Badge>
               </div>
             </CardHeader>
             <CardContent className="pt-4 flex-1 overflow-y-auto max-h-[800px] p-4 flex flex-col gap-4">
               <AnimatePresence>
                 {matches.length === 0 ? (
-                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center p-8 text-zinc-500 bg-zinc-900/30 rounded-lg border border-zinc-800 border-dashed">
+                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center p-8 text-muted-foreground bg-white rounded-lg border border-border border-dashed">
                     <p>No matches found.</p>
                     {canRunMatching && <p className="text-sm mt-2">Run matching engine to find compatible resources.</p>}
                   </motion.div>
@@ -297,11 +297,11 @@ export default function EmergencyDetailPage() {
                       transition={{ delay: i * 0.1 }}
                     >
                       <Card className="relative overflow-hidden border-border/70 bg-muted/20">
-                        <div className="absolute top-0 left-0 w-1 h-full bg-zinc-800" />
+                        <div className="absolute top-0 left-0 w-1 h-full bg-border" />
                         <CardContent className="p-4 flex flex-col gap-3">
                           <div className="flex justify-between items-start">
                             <div className="flex items-center gap-2">
-                              <Badge variant="outline" className="font-mono text-xs text-zinc-400">#{match.rank}</Badge>
+                              <Badge variant="outline" className="font-mono text-xs text-muted-foreground">#{match.rank}</Badge>
                               <span className="font-medium text-sm">{match.resourceType === 'BLOOD_BANK' ? match.bloodBank?.name || 'Blood Bank' : match.donor?.userId || 'Donor'}</span>
                             </div>
                             <div className={`text-2xl font-bold font-mono ${getScoreColor(match.score)}`}>
@@ -310,35 +310,35 @@ export default function EmergencyDetailPage() {
                           </div>
 
                           <div className="flex flex-wrap gap-1.5">
-                            <Badge variant="secondary" className="text-[10px] uppercase bg-zinc-800/50">{match.resourceType.replace('_', ' ')}</Badge>
-                            <Badge variant="secondary" className="text-[10px] uppercase bg-zinc-800/50">{match.compatibilityType.replace('_', ' ')}</Badge>
-                            <Badge variant={match.isVerified ? 'default' : 'outline'} className={match.isVerified ? 'bg-blue-500/10 text-blue-500 border-blue-500/20 text-[10px]' : 'text-[10px]'}>
+                            <Badge variant="secondary" className="text-[10px] uppercase bg-accent">{match.resourceType.replace('_', ' ')}</Badge>
+                            <Badge variant="secondary" className="text-[10px] uppercase bg-accent">{match.compatibilityType.replace('_', ' ')}</Badge>
+                            <Badge variant={match.isVerified ? 'default' : 'outline'} className={match.isVerified ? 'bg-accent text-accent-foreground border-border text-[10px]' : 'text-[10px]'}>
                               {match.isVerified ? 'VERIFIED' : 'PENDING'}
                             </Badge>
                           </div>
 
-                          <div className="grid grid-cols-2 gap-2 text-xs text-zinc-400 mt-1">
+                          <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground mt-1">
                             <div className="flex items-center gap-1"><MapPin className="w-3 h-3"/> {match.distanceKm.toFixed(1)} km</div>
                             <div className="flex items-center gap-1"><Droplets className="w-3 h-3"/> {match.availableQuantity} Units</div>
                           </div>
                           
-                          <div className="text-xs text-zinc-500 space-y-1 mt-1 border-t border-zinc-800/50 pt-2">
+                          <div className="text-xs text-muted-foreground space-y-1 mt-1 border-t border-border pt-2">
                             {match.reasons.map((r, idx) => (
                               <div key={idx} className="flex items-start gap-1.5">
-                                <Check className="w-3 h-3 mt-0.5 text-zinc-600 shrink-0"/>
+                                <Check className="w-3 h-3 mt-0.5 text-muted-foreground shrink-0"/>
                                 <span>{r}</span>
                               </div>
                             ))}
                           </div>
 
-                          <div className="flex justify-between items-center mt-2 pt-3 border-t border-zinc-800">
+                          <div className="flex justify-between items-center mt-2 pt-3 border-t border-border">
                             <Badge variant="outline" className={`text-[10px] ${match.status === 'ACCEPTED' ? 'text-emerald-500 border-emerald-500/20' : match.status === 'DECLINED' ? 'text-red-500 border-red-500/20' : 'text-amber-500 border-amber-500/20'}`}>
                               {match.status}
                             </Badge>
 
                             {user?.role && ['BLOOD_BANK', 'DONOR'].includes(user.role) && match.resourceUserId === user._id && ['NOTIFIED', 'PENDING'].includes(match.status) && (
                               <div className="flex gap-2">
-                                <Button size="sm" variant="outline" className="h-7 text-xs border-zinc-700 hover:bg-zinc-800" onClick={() => handleMatchAction(match._id, 'decline')}>
+                                <Button size="sm" variant="outline" className="h-7 text-xs border-border hover:bg-accent" onClick={() => handleMatchAction(match._id, 'decline')}>
                                   Decline
                                 </Button>
                                 <Button size="sm" className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700" onClick={() => handleMatchAction(match._id, 'accept')}>
@@ -362,26 +362,26 @@ export default function EmergencyDetailPage() {
           <Card className="ops-panel">
             <CardHeader className="border-b border-border/70 bg-muted/20 pb-4">
               <CardTitle className="text-lg flex items-center gap-2">
-                <Clock className="w-5 h-5 text-zinc-400" />
+                <Clock className="w-5 h-5 text-muted-foreground" />
                 REQUEST TIMELINE
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-6 relative">
-              <div className="absolute left-8 top-8 bottom-8 w-px bg-zinc-800" />
+              <div className="absolute left-8 top-8 bottom-8 w-px bg-border" />
               <div className="space-y-8 relative">
                 {timelineEvents.map((evt, i) => (
                   <div key={i} className={`flex gap-4 items-start ${!evt.completed && evt.time == null ? 'opacity-40' : ''}`}>
-                    <div className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center shrink-0 border-2 bg-zinc-950 ${
+                    <div className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center shrink-0 border-2 bg-white ${
                       evt.completed ? 'border-emerald-500 text-emerald-500' : 
-                      evt.time ? 'border-blue-500 text-blue-500' : 
-                      'border-zinc-700 text-zinc-600'
+                      evt.time ? 'border-primary text-primary' :
+                      'border-border text-muted-foreground'
                     }`}>
                       {evt.completed ? <CheckCircle className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
                     </div>
                     <div className="pt-1.5">
-                      <p className={`text-sm font-medium ${evt.completed ? 'text-zinc-200' : 'text-zinc-400'}`}>{evt.label}</p>
+                      <p className={`text-sm font-medium ${evt.completed ? 'text-foreground' : 'text-muted-foreground'}`}>{evt.label}</p>
                       {evt.time && (
-                        <p className="text-xs text-zinc-500 mt-1 font-mono">
+                        <p className="text-xs text-muted-foreground mt-1 font-mono">
                           {formatTime(evt.time)}
                         </p>
                       )}
@@ -393,14 +393,14 @@ export default function EmergencyDetailPage() {
           </Card>
 
           {user?.role === 'ADMIN' && (
-            <Card className="bg-zinc-950 border-zinc-800 border-dashed border-red-900/50 bg-red-950/10">
+            <Card className="bg-white border-border border-dashed">
               <CardContent className="p-4 flex flex-col gap-4">
                 <div>
                   <h3 className="text-sm font-medium text-red-500 mb-1 flex items-center gap-1.5"><AlertTriangle className="w-4 h-4"/> Escalation Controls</h3>
-                  <p className="text-xs text-zinc-400">Current Search Radius: <span className="font-mono text-zinc-300">{emergency.searchRadiusKm} km</span></p>
+                  <p className="text-xs text-muted-foreground">Current Search Radius: <span className="font-mono text-foreground">{emergency.searchRadiusKm} km</span></p>
                 </div>
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm" className="w-full border-red-900/50 hover:bg-red-900/20 text-red-400 text-xs">
+                  <Button variant="outline" size="sm" className="w-full border-border hover:bg-accent text-primary text-xs">
                     Expand Radius (+5km)
                   </Button>
                   <Button variant="destructive" size="sm" className="w-full text-xs">

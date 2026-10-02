@@ -95,12 +95,12 @@ export default function LiveMatchingPage() {
       
       {!isComplete ? (
         <Card className="ops-panel relative w-full overflow-hidden p-8 shadow-2xl backdrop-blur-sm md:p-12">
-          <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-purple-500/5" />
+          <div className="absolute inset-0 bg-gradient-to-br from-[#fff1f1]/70 to-transparent" />
           
           <div className="relative z-10 flex flex-col items-center">
             <div className="mb-10 text-center">
               <h1 className="text-2xl md:text-3xl font-bold tracking-tight mb-2 text-foreground flex items-center justify-center gap-3">
-                <Activity className="w-8 h-8 text-blue-500 animate-pulse" />
+                <Activity className="w-8 h-8 text-primary animate-pulse" />
                 Matching Engine Running
               </h1>
               <p className="text-muted-foreground font-mono text-sm">Processing Request ID: {id}</p>
@@ -123,20 +123,20 @@ export default function LiveMatchingPage() {
                     }}
                     transition={{ duration: 0.3 }}
                     className={`flex items-center gap-4 p-4 rounded-xl border ${
-                      isActive ? 'bg-blue-500/10 border-blue-500/30' : 
+                      isActive ? 'bg-accent border-border' :
                       isDone ? 'bg-emerald-500/5 border-emerald-500/20' : 
                       'bg-muted/50 border-border/50'
                     }`}
                   >
                     <div className={`shrink-0 flex items-center justify-center w-8 h-8 rounded-full ${
-                      isActive ? 'bg-blue-500 text-white animate-pulse' :
+                      isActive ? 'bg-primary text-white animate-pulse' :
                       isDone ? 'bg-emerald-500 text-white' :
                       'bg-muted text-muted-foreground'
                     }`}>
                       {isDone ? <CheckCircle2 className="w-5 h-5" /> : <Icon className="w-4 h-4" />}
                     </div>
                     <span className={`font-medium ${
-                      isActive ? 'text-blue-700' :
+                      isActive ? 'text-primary' :
                       isDone ? 'text-emerald-700' :
                       'text-muted-foreground'
                     }`}>
@@ -227,7 +227,7 @@ export default function LiveMatchingPage() {
           </div>
 
           <div className="flex justify-center mt-6">
-            <Button size="lg" className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => router.push(`/emergencies/${id}`)}>
+            <Button size="lg" onClick={() => router.push(`/emergencies/${id}`)}>
               View Request Details
               <ArrowRight className="w-4 h-4 ml-2" />
             </Button>

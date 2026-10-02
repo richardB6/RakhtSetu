@@ -65,8 +65,8 @@ export default function NotificationsPage() {
     switch (severity) {
       case 'CRITICAL': return <AlertTriangle className="w-5 h-5 text-red-500" />;
       case 'HIGH': return <AlertCircle className="w-5 h-5 text-amber-500" />;
-      case 'NORMAL': return <CheckCircle2 className="w-5 h-5 text-blue-500" />;
-      case 'INFO': return <Info className="w-5 h-5 text-slate-400" />;
+      case 'NORMAL': return <CheckCircle2 className="w-5 h-5 text-primary" />;
+      case 'INFO': return <Info className="w-5 h-5 text-muted-foreground" />;
     }
   };
 

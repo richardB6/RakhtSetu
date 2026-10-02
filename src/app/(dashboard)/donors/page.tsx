@@ -229,7 +229,7 @@ export default function DonorsPage() {
                 )}
                 <div className="flex items-center justify-between pt-1">
                   <span>Emergency alerts</span>
-                  <span className={`font-medium ${donor.emergencyNotificationsEnabled ? 'text-blue-500' : 'text-muted-foreground'}`}>
+                  <span className={`font-medium ${donor.emergencyNotificationsEnabled ? 'text-primary' : 'text-muted-foreground'}`}>
                     {donor.emergencyNotificationsEnabled ? 'On' : 'Off'}
                   </span>
                 </div>

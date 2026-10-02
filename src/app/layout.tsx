@@ -15,6 +15,10 @@ export const metadata: Metadata = {
   description:
     'Connecting critical blood needs to the right resource, faster. Emergency blood and platelet availability and rapid response coordination platform.',
   keywords: ['blood bank', 'emergency', 'platelet', 'donor', 'hospital', 'coordination'],
+  icons: {
+    icon: '/rakthsetu-logo.png',
+    apple: '/rakthsetu-logo.png',
+  },
 };
 
 export default function RootLayout({
@@ -23,7 +27,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark" data-scroll-behavior="smooth">
+    <html lang="en" data-scroll-behavior="smooth">
       <body className={`${ibmPlexSans.variable} font-sans`}>
         <AuthProvider>
           <TooltipProvider>
