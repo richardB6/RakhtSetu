@@ -6,9 +6,9 @@ import { createAuditLog } from '@/lib/services/audit.service';
 export { validateInventoryState, reserveInventoryUnits, releaseInventoryReservation } from '@/lib/engine/inventory-policy';
 import { validateInventoryState, reserveInventoryUnits, releaseInventoryReservation } from '@/lib/engine/inventory-policy';
 
-export async function getInventory(bloodBankId: string) {
+export async function getInventory(bloodBankId?: string) {
   await connectToDatabase();
-  return await Inventory.find({ bloodBankId }).sort({ bloodGroup: 1, component: 1 });
+  return await Inventory.find(bloodBankId ? { bloodBankId } : {}).sort({ bloodGroup: 1, component: 1 });
 }
 
 function inventoryState(item: { availableUnits: number; reservedUnits: number; totalUnits: number; status: InventoryStatus; operationallyUnavailable: boolean }) {
@@ -257,9 +257,12 @@ export async function setInventoryAvailability(
   return item;
 }
 
-export async function getInventoryHistory(bloodBankId: string, inventoryId?: string) {
+export async function getInventoryHistory(bloodBankId?: string, inventoryId?: string) {
   await connectToDatabase();
-  return InventoryHistory.find({ bloodBankId, ...(inventoryId ? { inventoryId } : {}) }).sort({ createdAt: -1 }).limit(200);
+  return InventoryHistory.find({
+    ...(bloodBankId ? { bloodBankId } : {}),
+    ...(inventoryId ? { inventoryId } : {}),
+  }).sort({ createdAt: -1 }).limit(200);
 }
 
 export async function getAvailableInventory(

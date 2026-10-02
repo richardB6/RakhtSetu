@@ -74,7 +74,7 @@ export const GET = withAuth(async (req, context) => {
 
     const [banks, donors] = await Promise.all([
       BloodBank.aggregate([
-        { $geoNear: { near, distanceField: 'distanceMeters', maxDistance: radiusKm * 1000, spherical: true } },
+        { $geoNear: { key: 'location', near, distanceField: 'distanceMeters', maxDistance: radiusKm * 1000, spherical: true } },
         { $match: bankMatch },
         { $lookup: { from: 'users', localField: 'userId', foreignField: '_id', as: 'user' } },
         { $unwind: { path: '$user', preserveNullAndEmptyArrays: false } },
@@ -88,7 +88,7 @@ export const GET = withAuth(async (req, context) => {
         ], as: 'inventory' } },
       ]),
       Donor.aggregate([
-        { $geoNear: { near, distanceField: 'distanceMeters', maxDistance: radiusKm * 1000, spherical: true } },
+        { $geoNear: { key: 'location', near, distanceField: 'distanceMeters', maxDistance: radiusKm * 1000, spherical: true } },
         { $match: donorMatch },
         { $lookup: { from: 'users', localField: 'userId', foreignField: '_id', as: 'user' } },
         { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },

@@ -11,6 +11,7 @@ import { timeAgo } from '@/lib/utils/date';
 interface VerificationEntry {
   _id: string;
   user: { _id: string; name: string; email: string; role: string };
+  profile?: { bloodGroup: string; dateOfBirth?: string; gender?: string; address: string; city: string; state: string; pincode: string } | null;
   entityType: string;
   status: string;
   submittedDocuments: string[];
@@ -166,6 +167,11 @@ export default function VerificationPage() {
                       {statusBadge(entry.status)}
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5">{entry.user.email}</p>
+                    {entry.profile && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {entry.profile.bloodGroup} · {entry.profile.city}, {entry.profile.state} · {entry.profile.address}, {entry.profile.pincode}
+                      </p>
+                    )}
                     <div className="flex items-center gap-3 mt-2">
                       <Badge variant="outline" className="text-[10px]">
                         {entry.entityType.replace('_', ' ')}

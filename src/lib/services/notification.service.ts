@@ -42,6 +42,47 @@ export async function createNotification(data: {
   return deliverInAppNotification(data, session);
 }
 
+export async function createMatchNotification(data: {
+  userId: string;
+  title: string;
+  message: string;
+  severity: NotificationSeverity;
+  referenceId: string;
+}) {
+  await connectToDatabase();
+
+  const priority = { CRITICAL: 100, HIGH: 75, NORMAL: 50, INFO: 25 }[data.severity];
+  const filter = {
+    userId: data.userId,
+    type: 'NEW_MATCH',
+    referenceType: 'MATCH',
+    referenceId: data.referenceId,
+  } as const;
+  try {
+    return await Notification.findOneAndUpdate(
+      filter,
+      {
+        $setOnInsert: {
+          ...data,
+          type: 'NEW_MATCH',
+          referenceType: 'MATCH',
+          priority,
+          channel: 'IN_APP',
+          deliveryStatus: 'DELIVERED',
+          deliveryNote: 'Delivered to the internal notification inbox',
+          isRead: false,
+        },
+      },
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
+    );
+  } catch (error) {
+    if (!(error instanceof mongoose.mongo.MongoServerError) || error.code !== 11000) throw error;
+    const existing = await Notification.findOne(filter);
+    if (!existing) throw error;
+    return existing;
+  }
+}
+
 export async function getNotifications(userId: string, filters?: {
   isRead?: boolean;
   severity?: NotificationSeverity;

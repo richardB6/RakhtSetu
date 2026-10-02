@@ -44,5 +44,9 @@ const NotificationSchema = new Schema<INotification>(
 NotificationSchema.index({ userId: 1, isRead: 1, createdAt: -1 });
 NotificationSchema.index({ userId: 1, severity: 1, isRead: 1 });
 NotificationSchema.index({ createdAt: -1 });
+NotificationSchema.index(
+  { userId: 1, referenceType: 1, referenceId: 1 },
+  { unique: true, partialFilterExpression: { type: 'NEW_MATCH', referenceType: 'MATCH' } }
+);
 
 export const Notification: Model<INotification> = mongoose.models.Notification || mongoose.model<INotification>('Notification', NotificationSchema);

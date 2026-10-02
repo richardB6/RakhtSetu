@@ -20,12 +20,12 @@ import { setAuthCookies } from '@/lib/auth/cookies';
 
 /**
  * Determine the initial verification status for a new account.
- * - DONOR: always auto-verified (individual users; no regulatory vetting required at registration).
+ * - DONOR: always requires administrator verification.
  * - HOSPITAL / BLOOD_BANK: auto-verified in DEMO_MODE so the platform can be tested
  *   end-to-end without a running admin workflow; PENDING in production.
  */
-function initialVerificationStatus(role: string): 'VERIFIED' | 'PENDING' {
-  if (role === 'DONOR') return 'VERIFIED';
+export function initialVerificationStatus(role: string): 'VERIFIED' | 'PENDING' {
+  if (role === 'DONOR') return 'PENDING';
   if (env.DEMO_MODE === 'true') return 'VERIFIED';
   return 'PENDING';
 }

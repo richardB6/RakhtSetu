@@ -5,6 +5,7 @@ import { BloodBank } from '@/models/BloodBank';
 import { Inventory } from '@/models/Inventory';
 import { connectToDatabase } from '@/lib/db/mongodb';
 import { z } from 'zod';
+import mongoose from 'mongoose';
 
 const inventoryPatchSchema = z.object({
   bloodGroup: z.enum(['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']),
@@ -23,15 +24,22 @@ async function getOwnedBloodBank(userId: string) {
 export const GET = withAuth(async (req, context) => {
   try {
     await connectToDatabase();
-    let targetBloodBankId = null;
+    let targetBloodBankId: string | undefined;
 
     if (context.user.role === 'BLOOD_BANK') {
       targetBloodBankId = (await getOwnedBloodBank(context.user.userId))._id.toString();
     } else if (context.user.role === 'ADMIN') {
       const { searchParams } = new URL(req.url);
-      targetBloodBankId = searchParams.get('bloodBankId');
-      if (!targetBloodBankId) {
-        return NextResponse.json({ success: false, message: 'bloodBankId is required for ADMIN' }, { status: 400 });
+      const requestedBloodBankId = searchParams.get('bloodBankId');
+      if (requestedBloodBankId && requestedBloodBankId !== 'all') {
+        if (!mongoose.Types.ObjectId.isValid(requestedBloodBankId)) {
+          return NextResponse.json({ success: false, message: 'Invalid blood bank ID' }, { status: 400 });
+        }
+        const bloodBankExists = await BloodBank.exists({ _id: requestedBloodBankId });
+        if (!bloodBankExists) {
+          return NextResponse.json({ success: false, message: 'Blood bank not found' }, { status: 404 });
+        }
+        targetBloodBankId = requestedBloodBankId;
       }
     } else {
       return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });

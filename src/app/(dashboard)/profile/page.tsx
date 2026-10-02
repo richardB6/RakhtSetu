@@ -1,11 +1,16 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatDate } from '@/lib/utils/date';
 import { User, Mail, Phone, Shield, Calendar, Edit2 } from 'lucide-react';
 
 export default function ProfilePage() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
+
+  useEffect(() => {
+    void refreshUser();
+  }, [refreshUser]);
 
   if (!user) {
     return (

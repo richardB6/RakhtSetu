@@ -3,6 +3,7 @@ import { withAuth } from '@/lib/auth/withAuth';
 import { connectToDatabase } from '@/lib/db/mongodb';
 import { User } from '@/models/User';
 import { Verification } from '@/models/Verification';
+import { Donor } from '@/models/Donor';
 import { createAuditLog } from '@/lib/services/audit.service';
 import { z } from 'zod';
 
@@ -27,13 +28,24 @@ export const GET = withAuth(async (req) => {
     const userIds = verificationEntries.map((entry) => entry.userId);
     const users = await User.find({ _id: { $in: userIds } }).select('_id name email role verificationStatus createdAt').lean();
     const userMap = new Map(users.map((user) => [user._id.toString(), user]));
+    const donorProfiles = await Donor.find({ userId: { $in: users.filter((user) => user.role === 'DONOR').map((user) => user._id) } })
+      .select('userId bloodGroup dateOfBirth gender address city state pincode')
+      .lean();
+    const donorProfileMap = new Map(donorProfiles.map((profile) => [profile.userId.toString(), profile]));
 
     const payload = verificationEntries
       .map((entry) => {
         const user = userMap.get(entry.userId.toString());
         if (!user) return null;
         const matches = !q ? true : `${user.name} ${user.email} ${user.role} ${user._id.toString()}`.toLowerCase().includes(q.toLowerCase());
-        return matches ? { ...entry, user, submittedDocuments: entry.submittedDocuments || [], createdAt: entry.createdAt, updatedAt: entry.updatedAt } : null;
+        return matches ? {
+          ...entry,
+          user,
+          profile: user.role === 'DONOR' ? donorProfileMap.get(user._id.toString()) || null : null,
+          submittedDocuments: entry.submittedDocuments || [],
+          createdAt: entry.createdAt,
+          updatedAt: entry.updatedAt,
+        } : null;
       })
       .filter(Boolean);
 

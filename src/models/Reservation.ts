@@ -1,4 +1,5 @@
 import mongoose, { Document, Model, Schema } from 'mongoose';
+import type { DonorAvailabilityStatus } from '@/models/Donor';
 
 export type ReservationStatus = 'PENDING' | 'ACTIVE' | 'RELEASED' | 'FULFILLED' | 'FAILED';
 
@@ -8,6 +9,8 @@ export interface IReservation extends Document {
   inventoryId?: mongoose.Types.ObjectId;
   bloodBankId?: mongoose.Types.ObjectId;
   donorId?: mongoose.Types.ObjectId;
+  donorAvailabilityStatusBeforeReservation?: DonorAvailabilityStatus;
+  donorAvailabilityLockUpdatedAt?: Date;
   resourceUserId: mongoose.Types.ObjectId;
   units: number;
   status: ReservationStatus;
@@ -24,6 +27,11 @@ const ReservationSchema = new Schema<IReservation>(
     inventoryId: { type: Schema.Types.ObjectId, ref: 'Inventory' },
     bloodBankId: { type: Schema.Types.ObjectId, ref: 'BloodBank' },
     donorId: { type: Schema.Types.ObjectId, ref: 'Donor' },
+    donorAvailabilityStatusBeforeReservation: {
+      type: String,
+      enum: ['AVAILABLE', 'UNAVAILABLE', 'TEMPORARILY_UNAVAILABLE'],
+    },
+    donorAvailabilityLockUpdatedAt: { type: Date },
     resourceUserId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     units: { type: Number, required: true, min: 1 },
     status: { type: String, enum: ['PENDING', 'ACTIVE', 'RELEASED', 'FULFILLED', 'FAILED'], required: true },

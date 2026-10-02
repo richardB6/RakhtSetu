@@ -31,7 +31,7 @@ export const GET = withAuth(async (req: NextRequest, context) => {
         .limit(8)
         .lean(),
       BloodBank.aggregate([
-        { $geoNear: { near: donorPoint, distanceField: 'distanceMeters', maxDistance: donor.availabilityRadius * 1000, spherical: true } },
+        { $geoNear: { key: 'location', near: donorPoint, distanceField: 'distanceMeters', maxDistance: donor.availabilityRadius * 1000, spherical: true } },
         { $match: { operationalStatus: { $in: ['OPEN', 'LIMITED'] }, isOpen: true } },
         { $lookup: { from: 'users', localField: 'userId', foreignField: '_id', as: 'user' } },
         { $unwind: '$user' },

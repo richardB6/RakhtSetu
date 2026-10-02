@@ -25,6 +25,13 @@ export async function reserveAcceptedMatch(matchId: string, actor: { userId: str
   if (existing) return existing;
 
   if (match.resourceType === 'DONOR') {
+    const donorProfile = await Donor.findOne({
+      _id: match.resourceId,
+      isAvailable: true,
+      availabilityStatus: { $nin: ['UNAVAILABLE', 'TEMPORARILY_UNAVAILABLE'] },
+      emergencyNotificationsEnabled: true,
+    });
+    if (!donorProfile) throw new Error('Donor is no longer operationally available');
     const donor = await Donor.findOneAndUpdate(
       { _id: match.resourceId, isAvailable: true, availabilityStatus: { $nin: ['UNAVAILABLE', 'TEMPORARILY_UNAVAILABLE'] }, emergencyNotificationsEnabled: true },
       { $set: { isAvailable: false, availabilityStatus: 'TEMPORARILY_UNAVAILABLE' } },
@@ -37,6 +44,8 @@ export async function reserveAcceptedMatch(matchId: string, actor: { userId: str
         emergencyRequestId: request._id,
         matchId: match._id,
         donorId: donor._id,
+        donorAvailabilityStatusBeforeReservation: donorProfile.availabilityStatus,
+        donorAvailabilityLockUpdatedAt: donor.updatedAt,
         resourceUserId: match.resourceUserId,
         units: 1,
         status: 'ACTIVE',
@@ -149,8 +158,17 @@ export async function releaseRequestReservations(
     }
     if (reservation.donorId) {
       await Donor.findOneAndUpdate(
-        { _id: reservation.donorId },
-        { $set: { isAvailable: true, availabilityStatus: 'AVAILABLE' } }
+        {
+          _id: reservation.donorId,
+          availabilityStatus: 'TEMPORARILY_UNAVAILABLE',
+          ...(reservation.donorAvailabilityLockUpdatedAt ? { updatedAt: reservation.donorAvailabilityLockUpdatedAt } : {}),
+        },
+        {
+          $set: {
+            isAvailable: (reservation.donorAvailabilityStatusBeforeReservation || 'AVAILABLE') === 'AVAILABLE',
+            availabilityStatus: reservation.donorAvailabilityStatusBeforeReservation || 'AVAILABLE',
+          },
+        }
       );
     }
     reservation.status = reason === 'FULFILLED' ? 'FULFILLED' : 'RELEASED';
@@ -186,7 +204,19 @@ export async function releaseMatchReservation(
     }
   }
   if (reservation.donorId) {
-    await Donor.findOneAndUpdate({ _id: reservation.donorId }, { $set: { isAvailable: true, availabilityStatus: 'AVAILABLE' } });
+    await Donor.findOneAndUpdate(
+      {
+        _id: reservation.donorId,
+        availabilityStatus: 'TEMPORARILY_UNAVAILABLE',
+        ...(reservation.donorAvailabilityLockUpdatedAt ? { updatedAt: reservation.donorAvailabilityLockUpdatedAt } : {}),
+      },
+      {
+        $set: {
+          isAvailable: (reservation.donorAvailabilityStatusBeforeReservation || 'AVAILABLE') === 'AVAILABLE',
+          availabilityStatus: reservation.donorAvailabilityStatusBeforeReservation || 'AVAILABLE',
+        },
+      }
+    );
   }
   reservation.status = 'RELEASED';
   reservation.releaseReason = reason;

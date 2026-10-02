@@ -6,14 +6,13 @@ import { Inventory } from '@/models/Inventory';
 import { BloodBank } from '@/models/BloodBank';
 import { Donor } from '@/models/Donor';
 import { User } from '@/models/User';
-import { getCompatibleDonorGroups, getCompatibilityLevel, ComponentType, BloodGroup } from '@/lib/engine/compatibility';
+import { ACTIVE_STATUSES, getCompatibleDonorGroups, getCompatibilityLevel, ComponentType, BloodGroup } from '@/lib/engine/compatibility';
 import { rankResources } from '@/lib/engine/matching-policy';
-import { createNotification } from '@/lib/services/notification.service';
+import { createMatchNotification, createNotification } from '@/lib/services/notification.service';
 import { reserveAcceptedMatch } from '@/lib/services/reservation.service';
+import { Reservation } from '@/models/Reservation';
 export { rankResources } from '@/lib/engine/matching-policy';
 
-// Dynamically access Notification and AuditLog models to avoid strict import errors if they don't exist yet
-const getNotificationModel = () => mongoose.models.Notification || mongoose.model('Notification', new mongoose.Schema({}, { strict: false }));
 const getAuditLogModel = () => mongoose.models.AuditLog || mongoose.model('AuditLog', new mongoose.Schema({}, { strict: false }));
 
 export interface CalculateMatchScoreParams {
@@ -131,6 +130,66 @@ export function calculateMatchScore(params: CalculateMatchScoreParams) {
 /** Operational scoring alias kept explicit to distinguish it from clinical decisions. */
 export const calculateOperationalScore = calculateMatchScore;
 
+async function deliverMatchNotifications(
+  request: InstanceType<typeof EmergencyRequest>,
+  matches: Array<{
+    _id: mongoose.Types.ObjectId;
+    status: string;
+    resourceType: string;
+    resourceId: mongoose.Types.ObjectId;
+    resourceUserId: mongoose.Types.ObjectId;
+    distanceKm: number;
+  }>,
+  donorsOnly = false
+) {
+  const now = new Date();
+  if (
+    ['DRAFT', 'CANCELLED', 'EXPIRED', 'FULFILLED'].includes(request.status) ||
+    request.requiredBy <= now ||
+    (request.responseDeadline && request.responseDeadline <= now)
+  ) return 0;
+
+  const pendingMatches = matches.filter((match) => ['PENDING', 'NOTIFIED'].includes(match.status));
+  const bankMatches = donorsOnly
+    ? []
+    : pendingMatches.filter((match) => match.resourceType === 'BLOOD_BANK').slice(0, 10);
+  const compatibleGroups = getCompatibleDonorGroups(request.bloodGroup as BloodGroup, request.component as ComponentType);
+  const donorMatches = pendingMatches.filter((match) => match.resourceType === 'DONOR');
+  const eligibleDonorMatches = (await Promise.all(donorMatches.map(async (match) => {
+    const [donor, user, activeReservation] = await Promise.all([
+      Donor.findOne({
+        _id: match.resourceId,
+        userId: match.resourceUserId,
+        bloodGroup: { $in: compatibleGroups },
+        availabilityStatus: 'AVAILABLE',
+        isAvailable: true,
+        emergencyNotificationsEnabled: true,
+      }).select('availabilityRadius').lean(),
+      User.findOne({ _id: match.resourceUserId, isActive: true, verificationStatus: 'VERIFIED' }).select('_id').lean(),
+      Reservation.exists({ donorId: match.resourceId, status: 'ACTIVE' }),
+    ]);
+    if (!donor || !user || activeReservation || match.distanceKm > request.searchRadiusKm || match.distanceKm > donor.availabilityRadius) return null;
+    return match;
+  }))).filter((match): match is InstanceType<typeof Match> => match !== null);
+  const targets = [...bankMatches, ...eligibleDonorMatches];
+
+  await Promise.all(targets.map((match) => createMatchNotification({
+    userId: match.resourceUserId.toString(),
+    title: 'Emergency Blood Request Match',
+    message: `You have been matched for an emergency request of ${request.quantity} units of ${request.bloodGroup} ${request.component}. Respond before ${request.responseDeadline?.toISOString()}.`,
+    severity: request.severity,
+    referenceId: match._id.toString(),
+  })));
+
+  if (targets.length > 0) {
+    await Match.updateMany(
+      { _id: { $in: targets.map((match) => match._id) }, status: { $in: ['PENDING', 'NOTIFIED'] } },
+      { $set: { status: 'NOTIFIED', notifiedAt: now } }
+    );
+  }
+  return eligibleDonorMatches.length;
+}
+
 export async function runMatchingEngine(emergencyRequestId: string, userId: string, isAdmin = false) {
   await connectToDatabase();
   
@@ -160,7 +219,10 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
   }
   if (!['CREATED', 'MATCHING', 'ESCALATED'].includes(request.status)) {
     const existing = await Match.find({ emergencyRequestId: request._id }).sort({ rank: 1, _id: 1 });
-    if (existing.length > 0) return existing;
+    if (existing.length > 0) {
+      await deliverMatchNotifications(request, existing);
+      return existing;
+    }
     throw new Error(`Request is already ${request.status.toLowerCase()}`);
   }
 
@@ -283,6 +345,18 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
       },
     },
     {
+      $lookup: {
+        from: 'reservations',
+        let: { donorId: '$_id' },
+        pipeline: [
+          { $match: { $expr: { $and: [{ $eq: ['$donorId', '$$donorId'] }, { $eq: ['$status', 'ACTIVE'] }] } } },
+          { $limit: 1 },
+        ],
+        as: 'activeReservations',
+      },
+    },
+    { $match: { 'activeReservations.0': { $exists: false } } },
+    {
       $match: {
         bloodGroup: { $in: compatibleGroups },
         availabilityStatus: { $nin: ['UNAVAILABLE', 'TEMPORARILY_UNAVAILABLE'] },
@@ -341,7 +415,8 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
   const rankedMatches = rankResources(allMatches).map((m, idx) => ({ ...m, rank: idx + 1 }));
 
   // Save matches to DB
-  const createdMatches = await Match.insertMany(rankedMatches);
+  const insertedMatches = await Match.insertMany(rankedMatches);
+  const createdMatches = await Match.find({ _id: { $in: insertedMatches.map((match) => match._id) } });
 
   // Update request
   request.status = createdMatches.length > 0 ? 'RESOURCES_NOTIFIED' : 'ESCALATED';
@@ -354,27 +429,7 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
   request.matchCount = createdMatches.length;
   await request.save();
 
-  // Create notifications for top 10 matches
-  const top10 = createdMatches.slice(0, 10);
-  if (top10.length > 0) {
-    await Match.updateMany(
-      { _id: { $in: top10.map((match) => match._id) } },
-      { $set: { status: 'NOTIFIED', notifiedAt: new Date() } }
-    );
-    top10.forEach((match) => {
-      match.status = 'NOTIFIED';
-      match.notifiedAt = new Date();
-    });
-  }
-  await Promise.all(top10.map((match) => createNotification({
-    userId: match.resourceUserId.toString(),
-    type: 'NEW_MATCH',
-    title: 'Emergency Blood Request Match',
-    message: `You have been matched for an emergency request of ${request.quantity} units of ${request.bloodGroup} ${request.component}. Respond before ${request.responseDeadline?.toISOString()}.`,
-    severity: request.severity,
-    referenceType: 'MATCH',
-    referenceId: match._id.toString(),
-  })));
+  await deliverMatchNotifications(request, createdMatches);
 
   // Create audit log
   const AuditLogModel = getAuditLogModel();
@@ -390,6 +445,34 @@ export async function runMatchingEngine(emergencyRequestId: string, userId: stri
   });
 
   return createdMatches;
+}
+
+export async function backfillEligibleDonorMatchNotifications(limit = 500, requestIds?: string[]) {
+  await connectToDatabase();
+  const now = new Date();
+  const requests = await EmergencyRequest.find({
+    ...(requestIds ? { _id: { $in: requestIds } } : {}),
+    status: { $in: ACTIVE_STATUSES },
+    requiredBy: { $gt: now },
+    $or: [
+      { responseDeadline: { $gt: now } },
+      { responseDeadline: { $exists: false } },
+    ],
+  })
+    .sort({ createdAt: 1 })
+    .limit(Math.min(Math.max(Math.floor(limit), 1), 5000));
+
+  let donorMatchesNotified = 0;
+  for (const request of requests) {
+    const donorMatches = await Match.find({
+      emergencyRequestId: request._id,
+      resourceType: 'DONOR',
+      status: { $in: ['PENDING', 'NOTIFIED'] },
+    });
+    donorMatchesNotified += await deliverMatchNotifications(request, donorMatches, true);
+  }
+
+  return { requestsChecked: requests.length, donorMatchesNotified };
 }
 
 export async function getMatchesForRequest(emergencyRequestId: string, userId?: string, role?: string) {
